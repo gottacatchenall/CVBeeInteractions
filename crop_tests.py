@@ -3,16 +3,27 @@ import numpy as np
 import torch
 import uuid
 import os
-from PIL import Image
+import time
+import argparse
 
+from PIL import Image
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
 
+parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
+parser.add_argument('--species', type=int, default=0, help='')
+parser.add_argument('--cluster', action='store_true')
 
-def load_species_image_metadata(species_name):
-    metadata = pd.read_csv(os.path.join("data", "img", species_name, "_metadata.csv"))
+
+def get_species_names(base_path):
+    sp_list = [f for f in os.listdir(os.path.join(base_path, "data", "img")) if not f.startswith('.')]
+    sp_list.sort()
+    return sp_list
+
+def load_species_image_metadata(base_path, species_name):
+    metadata = pd.read_csv(os.path.join(base_path, "data", "img",species_name, "_metadata.csv"))
     return metadata
    
-def process_image(image, prompt):  
+def process_image(processor, model, image, prompt, device):  
     try:  
         inputs = processor(
             images=image, 
@@ -32,38 +43,9 @@ def process_image(image, prompt):
         result = results[0]
         for box, score, labels in zip(result["boxes"], result["scores"], result["labels"]):
             box = [round(x, 2) for x in box.tolist()]
-            print(f"Detected {labels} with confidence {round(score.item(), 3)} at location {box}")
         return result
     except:
         pass
-
-"""
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-
-def plot_results(img, result):
-  fig, ax = plt.subplots(1)
-  ax.imshow(img)
-
-  detections = [
-      {'box': result["boxes"][r].cpu(), 'label': result["labels"][r], 'score': result["scores"][r]}
-      for r in range(len(result["scores"]))
-  ]
-
-  for det in detections:
-    x_min, y_min, x_max, y_max = det['box']
-    width = x_max - x_min
-    height = y_max - y_min
-
-    # Create a Rectangle patch
-    rect = patches.Rectangle((x_min, y_min), width, height, linewidth=2, edgecolor='r', facecolor='none')
-    ax.add_patch(rect)
-
-    # Add label and confidence score
-    ax.text(x_min, y_min - 1, f"{det['label']} ({det['score']:.2f})", color='white', fontsize=8, bbox=dict(facecolor='red', alpha=0.7))
-
-  fig.show()
-"""
 
 
 def crop_image(image, bbox):
@@ -73,52 +55,61 @@ def crop_image(image, bbox):
     return cropped_img
 
 
-def process_species_images(species_name):
-    dirpath = os.path.join("data", "processed_img", species_name)
-    if not os.path.exists(dirpath):
-        os.mkdir(dirpath)
+def process_species_images(processor, model, base_path, species_name, device):
+    metadata_df = load_species_image_metadata(base_path, species_name)
+    image_paths = [os.path.join(base_path, image_path) for image_path in metadata_df.image]
 
-    metadf = load_species_image_metadata(species_name)
+    outdir_path = os.path.join(base_path, "data", "processed_img", species_name)
+    if not os.path.exists(outdir_path):
+        os.mkdir(outdir_path)
+
     prompt = "a bee." if "Bombus" in species_name else "a flowering plant."
 
     metadata = []
-
-    for i,r in metadf.iterrows():
-        img_path = r["image"]
+    total_time = 0
+    for (i,img_path) in enumerate(image_paths):
+        start = time.time()
         image = Image.open(img_path)
-        result = process_image(image, prompt)
+        result = process_image(processor, model, image, prompt, device)
 
         if result != None: 
             for box in result["boxes"]:
                 cropped_img = crop_image(image, box)
                 img_uuid = str(uuid.uuid4())
-                img_path = os.path.join(dirpath, img_uuid + '.jpg')
+                img_path = os.path.join(outdir_path, img_uuid + '.jpg')
                 cropped_img.save(img_path)
-
                 obj = {
                     "path": img_path,
-                    "user_id": r["user_id"],
-                    "username": r["username"],
-                    "observation_id": r["user_id"]
+                    "user_id": metadata_df["user_id"][i],
+                    "username": metadata_df["username"][i],
+                    "observation_id": metadata_df["user_id"][i]
                 }
                 metadata.append(obj)
         
+        end = time.time()
+        total_time += end - start
+
+    print("Avg time: %f" % total_time / len(image_paths))
+    print("Total time: %f" % total_time)
     df = pd.DataFrame(metadata)
-    df.to_csv(os.path.join(dirpath, "_metadata.csv"), index=False)
+    df.to_csv(os.path.join(outdir_path, "_metadata.csv"), index=False)
 
 
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model_id = "IDEA-Research/grounding-dino-tiny"
-device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-print(f"Using device: {device}")
+def main():
+    args = parser.parse_args()  
+    base_path = os.path.join("/scratch", "mcatchen") if args.cluster else "./"
 
-os.mkdir(os.path.join("data", "processed_img"))
+    model_id = "IDEA-Research/grounding-dino-base"
+    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+    print(f"Using device: {device}")
+    
+    processor = AutoProcessor.from_pretrained(model_id)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
 
-processor = AutoProcessor.from_pretrained(model_id)
-model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
+    species_name = get_species_names(base_path)[args.species]
+    process_species_images(processor, model, base_path, species_name, device)
 
+if __name__=='__main__':
+   main()
 
-bombus = [x for x in os.listdir(os.path.join("data", "img")) if "Bombus" in x]
-
-process_species_images(bombus[0])

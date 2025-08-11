@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=0:10:00
+#SBATCH --time=0:20:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
 #SBATCH --gres=gpu:1 # request a GPU
@@ -14,4 +14,4 @@ pip install --no-index --upgrade pip
 
 pip install --no-index -r requirements.txt
 
-python test_python_install.py
+python crop_test.py --cluster --species 0 
