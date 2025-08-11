@@ -98,7 +98,7 @@ def process_species_images(processor, model, base_path, species_name, device):
 
 def main():
     args = parser.parse_args()  
-    base_path = os.path.join("/scratch", "mcatchen") if args.cluster else "./"
+    base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 
     model_id = "IDEA-Research/grounding-dino-base"
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
