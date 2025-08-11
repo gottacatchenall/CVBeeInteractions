@@ -64,10 +64,11 @@ def process_species_images(processor, model, base_path, species_name, device):
         os.mkdir(outdir_path)
 
     prompt = "a bee." if "Bombus" in species_name else "a flowering plant."
-
+    print("Prompt: " + prompt)
     metadata = []
     total_time = 0
     for (i,img_path) in enumerate(image_paths):
+        print("Processing: " + img_path)
         start = time.time()
         image = Image.open(img_path)
         result = process_image(processor, model, image, prompt, device)
@@ -77,6 +78,7 @@ def process_species_images(processor, model, base_path, species_name, device):
                 cropped_img = crop_image(image, box)
                 img_uuid = str(uuid.uuid4())
                 img_path = os.path.join(outdir_path, img_uuid + '.jpg')
+                print("Writing to: " + img_path)
                 cropped_img.save(img_path)
                 obj = {
                     "path": img_path,
@@ -89,8 +91,9 @@ def process_species_images(processor, model, base_path, species_name, device):
         end = time.time()
         total_time += end - start
 
-    print("Avg time: %f" % total_time / len(image_paths))
-    print("Total time: %f" % total_time)
+    avg_time = total_time/len(image_paths)
+    print("Avg time: {avg_time:.4f}")
+    print("Total time: {total_time:.4f}")
     df = pd.DataFrame(metadata)
     df.to_csv(os.path.join(outdir_path, "_metadata.csv"), index=False)
 
