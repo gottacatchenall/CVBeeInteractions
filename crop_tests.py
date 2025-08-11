@@ -10,7 +10,6 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
 
 parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
-parser.add_argument('--species', type=int, default=0, help='')
 parser.add_argument('--cluster', action='store_true')
 
 
@@ -111,8 +110,9 @@ def main():
     processor = AutoProcessor.from_pretrained(model_id, local_files_only=True)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id, local_files_only=True).to(device)
 
-    species_name = get_species_names(base_path)[args.species]
-    process_species_images(processor, model, base_path, species_name, device)
+    species_names = get_species_names(base_path)
+    for species_name in species_names:
+        process_species_images(processor, model, base_path, species_name, device)
 
 if __name__=='__main__':
    main()
