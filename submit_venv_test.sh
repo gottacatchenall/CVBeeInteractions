@@ -1,6 +1,8 @@
 #!/bin/bash
 #SBATCH --mem-per-cpu=8G  
 #SBATCH --time=0:10:00
+#SBATCH --account=def-tpoisot
+
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
