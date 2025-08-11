@@ -44,8 +44,10 @@ def process_image(processor, model, image, prompt, device):
         for box, score, labels in zip(result["boxes"], result["scores"], result["labels"]):
             box = [round(x, 2) for x in box.tolist()]
         return result
-    except:
-        pass
+    except Exception as err:
+        print(f"Unexpected {err=}, {type(err)=}")
+        raise
+
 
 
 def crop_image(image, bbox):
