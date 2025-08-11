@@ -23,7 +23,7 @@ def load_species_image_metadata(base_path, species_name):
     metadata = pd.read_csv(os.path.join(base_path, "data", "img",species_name, "_metadata.csv"))
     return metadata
    
-def process_image(processor, model, image, prompt, device):  
+def process_image(processor, model, image, prompt, device, filepath):  
     try:  
         inputs = processor(
             images=image, 
@@ -45,8 +45,7 @@ def process_image(processor, model, image, prompt, device):
             box = [round(x, 2) for x in box.tolist()]
         return result
     except Exception as err:
-        print(f"Unexpected {err=}, {type(err)=}")
-        raise
+        print(f"Unexpected {err=} for file {filepath=} ")
 
 
 
@@ -73,7 +72,7 @@ def process_species_images(processor, model, base_path, species_name, device):
         print("Processing: " + img_path)
         start = time.time()
         image = Image.open(img_path)
-        result = process_image(processor, model, image, prompt, device)
+        result = process_image(processor, model, image, prompt, device, img_path)
 
         if result != None: 
             for box in result["boxes"]:
