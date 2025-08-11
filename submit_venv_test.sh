@@ -1,8 +1,10 @@
 #!/bin/bash
-#SBATCH --mem-per-cpu=8G  
-#SBATCH --time=0:10:00
+#SBATCH --time=0:05:00
 #SBATCH --account=def-tpoisot
-
+#SBATCH --nodes 1
+#SBATCH --gres=gpu:1 # request a GPU
+#SBATCH --tasks-per-node=1 
+#SBATCH --cpus-per-task=1 
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env

@@ -9,4 +9,4 @@ from torch.utils.data import DataLoader
 
 device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
-print("Loaded torch on device " + device)
+print("Is cuda available: %s" % torch.cuda.is_available())

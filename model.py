@@ -116,11 +116,7 @@ def test_loop(model, criterion, test_loader):
 
     _one_hot_labels = np.eye(model.num_classes)[all_labels]
 
-    test_acc = sklearn.metrics.average_precision_score(
-            y_true=_one_hot_labels,  # one-hot encoding
-            y_score=all_probs,
-            average='macro'
-    )
+    
     test_map = sklearn.metrics.average_precision_score(
             y_true=_one_hot_labels,  # one-hot encoding
             y_score=all_probs,
