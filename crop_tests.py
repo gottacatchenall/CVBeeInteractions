@@ -104,8 +104,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     print(f"Using device: {device}")
     
-    processor = AutoProcessor.from_pretrained(model_id)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
+    processor = AutoProcessor.from_pretrained(model_id, local_files_only=True)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id, local_files_only=True).to(device)
 
     species_name = get_species_names(base_path)[args.species]
     process_species_images(processor, model, base_path, species_name, device)
