@@ -1,0 +1,22 @@
+[project]
+name = "coloradobees"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "datetime>=5.5",
+    "ipyplot>=1.1.2",
+    "numpy>=2.3.1",
+    "pandas>=2.3.1",
+    "polars>=1.31.0",
+    "pygbif>=0.6.5",
+    "pyinaturalist>=0.20.1",
+    "python-dotenv>=1.1.1",
+    "requests>=2.32.4",
+    "scikit-learn>=1.7.0",
+    "torch>=2.7.1",
+    "torchvision>=0.22.1",
+    "tqdm>=4.67.1",
+    "transformers>=4.54.1",
+]
