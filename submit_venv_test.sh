@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --mem-per-cpu=1.5G      # increase as needed
-#SBATCH --time=1:00:00
+#SBATCH --mem-per-cpu=8G  
+#SBATCH --time=0:10:00
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
