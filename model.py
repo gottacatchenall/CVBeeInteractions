@@ -17,6 +17,10 @@ from torchvision import datasets, transforms
 from transformers import AutoImageProcessor, ResNetForImageClassification
 import torchmetrics
 
+import argparse
+
+
+
 class ResNetSpeciesEmbeddingModel(nn.Module):
     def __init__(
         self, 
@@ -35,7 +39,6 @@ class ResNetSpeciesEmbeddingModel(nn.Module):
             "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=self.num_classes).to(self.device)
         }
 
-
         model_name = "microsoft/resnet-50"
         self.image_processor = AutoImageProcessor.from_pretrained(model_name, local_files_only=True, use_fast=True)
         self.image_transform = transforms.Compose([
@@ -45,19 +48,16 @@ class ResNetSpeciesEmbeddingModel(nn.Module):
         ])
 
         self.image_model = ResNetForImageClassification.from_pretrained(model_name, local_files_only=True)
-        self.image_model.to(self.device)
 
         self.embedding_model = nn.Sequential(
             # Final ResNet pooling is [n_batches, 2048]
             nn.Linear(2048, species_embedding_dim) 
         )
-        self.embedding_model.to(self.device)
 
         self.classification_head = nn.Sequential(
             nn.ReLU(),
             nn.Linear(species_embedding_dim, num_classes) 
         )
-        self.classification_head.to(self.device)
 
         # --- Freeze CNN layers  ---
         for param in self.image_model.parameters():
@@ -259,6 +259,9 @@ def main(parser):
     model_name = args.model
     
     model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim)
+
+    if torch.cuda.is_available():
+        model = torch.compile(model)
 
     img_dir  = os.path.join(base_path, "data", "bombus_img")    
     print(f"Starting training on {model.device} with dir {img_dir}")
