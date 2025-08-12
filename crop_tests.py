@@ -110,7 +110,7 @@ def main():
     processor = AutoProcessor.from_pretrained(model_id, local_files_only=True)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id, local_files_only=True).to(device)
 
-    species_names = get_species_names(base_path)[69:]
+    species_names = get_species_names(base_path)[133:]
     for species_name in species_names:
         process_species_images(processor, model, base_path, species_name, device)
 
