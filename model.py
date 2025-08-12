@@ -37,7 +37,7 @@ class ResNetSpeciesEmbeddingModel(nn.Module):
 
 
         model_name = "microsoft/resnet-50"
-        self.image_processor = AutoImageProcessor.from_pretrained(model_name, local_files_only=True)
+        self.image_processor = AutoImageProcessor.from_pretrained(model_name, local_files_only=True, use_fast=True)
         self.image_transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -117,7 +117,7 @@ class ViTSpeciesEmbeddingModel(nn.Module):
             param.requires_grad = False
         """
 
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
 
         self.image_transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -172,7 +172,7 @@ def setup_data(
 ):
     full_dataset = datasets.ImageFolder(
         data_dir, 
-        transform=model.image_transform
+        transform=model.image_transform,
     )
     
     train_size = int(0.8 * len(full_dataset))
@@ -231,7 +231,7 @@ def train(model, img_dir, n_epochs, learning_rate):
     model.to(model.device)
     train_loader, test_loader = setup_data(img_dir, model)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss().to(model.device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     stat_dicts = []
@@ -259,7 +259,7 @@ def main(parser):
     model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim)
 
     img_dir  = os.path.join(base_path, "data", "bombus_img")    
-    print("Starting training on {model.device} with dir {img_dir}")
+    print(f"Starting training on {model.device} with dir {img_dir}")
 
     df = train(model, img_dir, args.nepoch, args.lr)
 
