@@ -1,169 +1,281 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
+
+from transformers import AutoFeatureExtractor
+from transformers import AutoModel
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+
 import os
+import pandas as pd
 import numpy as np
-import sklearn
+import argparse
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from transformers import AutoImageProcessor, ResNetForImageClassification
-import matplotlib.pyplot as plt
+import torchmetrics
 
-class ResNetSpecieClassifier(nn.Module):
-    def __init__(self, model, species_embedding_dim=16, num_classes=19):
+class ResNetSpeciesEmbeddingModel(nn.Module):
+    def __init__(
+        self, 
+        species_embedding_dim=64, 
+        num_classes=19,
+        batch_size = 128,
+    ):
         super().__init__()
-        # keep everything except the classifier head
         self.num_classes = num_classes
-        self.backbone = model.resnet
+        self.batch_size = batch_size
+        self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
-        self.species_embedding_mlp = nn.Sequential(
+        self.metrics = {
+            "AUROC": torchmetrics.AUROC(task="multiclass", num_classes=self.num_classes).to(self.device),
+            "MAP": torchmetrics.AveragePrecision(task="multiclass", num_classes=self.num_classes).to(self.device), 
+            "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=self.num_classes).to(self.device)
+        }
+
+
+        model_name = "microsoft/resnet-50"
+        self.image_processor = AutoImageProcessor.from_pretrained(model_name)
+        self.image_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=self.image_processor.image_mean, std=self.image_processor.image_std),
+        ])
+
+        self.image_model = ResNetForImageClassification.from_pretrained(model_name)
+        self.image_model.to(self.device)
+
+        self.embedding_model = nn.Sequential(
+            # Final ResNet pooling is [n_batches, 2048]
             nn.Linear(2048, species_embedding_dim) 
         )
+        self.embedding_model.to(self.device)
+
         self.classification_head = nn.Sequential(
             nn.ReLU(),
             nn.Linear(species_embedding_dim, num_classes) 
         )
+        self.classification_head.to(self.device)
 
         # --- Freeze CNN layers  ---
-        for param in self.backbone.parameters():
+        for param in self.image_model.parameters():
             param.requires_grad = False
-        for param in self.species_embedding_mlp.parameters():
+        for param in self.embedding_model.parameters():
             param.requires_grad = True
         for param in self.classification_head.parameters():
             param.requires_grad = True
             
-    def resnet_embedding(self, x):
-        features = self.backbone(x, output_hidden_states=True)
+    def embed_image(self, x):
+        features = self.image_model.resnet(x, output_hidden_states=True)
         return features.pooler_output.squeeze()
+    
+    def prepare_train(self):
+        self.embedding_model.train()
+        self.classification_head.train()
+
+    def test_stats(self, all_labels, all_probs, test_loss):
+        stats = {
+            "test_loss": test_loss,
+        }
+        for k in self.metrics.keys():
+            stats[k] = self.metrics[k](all_probs, all_labels).item()
+        return stats
 
     def forward(self, x):
-        return self.classification_head(self.species_embedding_mlp(self.resnet_embedding(x)))
+        return self.classification_head(self.embedding_model(x))
 
 
-# ------------------------
-# 1. Load Pretrained ResNet50
-# ------------------------
-model_name = "microsoft/resnet-50"
-processor = AutoImageProcessor.from_pretrained(model_name)
-resnet = ResNetForImageClassification.from_pretrained(
-    model_name,
-)
-device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+class ViTSpeciesEmbeddingModel(nn.Module):
+    def __init__(self, 
+        num_classes=19,
+        species_embedding_dim = 64, 
+        batch_size = 512,
+    ):
 
-# ------------------------
-# 2. Prepare Data
-# ------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=processor.image_mean, std=processor.image_std),
-])
-batch_size = 256
-img_dir  = os.path.join("data/cropped_bombus/")
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
-full_dataset = datasets.ImageFolder(
-    img_dir, 
-    transform=transform
-)
+        self.num_classes = num_classes
+        self.batch_size = batch_size
+        self.species_embedding_dim = species_embedding_dim
+
+        self.metrics = {
+            "AUROC": torchmetrics.AUROC(task="multiclass", num_classes=self.num_classes).to(self.device),
+            "MAP": torchmetrics.AveragePrecision(task="multiclass", num_classes=self.num_classes).to(self.device), 
+            "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=self.num_classes).to(self.device)
+        }
+
+
+        """
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224-in21k")
+        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224-in21k")
+        self.image_model.to(self.device)
+        self.image_model.eval() 
+        for param in self.image_model.parameters():
+            param.requires_grad = False
+        """
+
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224")
+
+        self.image_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=self.feature_extractor.image_mean, 
+                std=self.feature_extractor.image_std),
+        ])
+
+        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224")
+        self.image_model.to(self.device)
+
+        for param in self.image_model.encoder.parameters():
+            param.requires_grad = False
+        for param in self.image_model.embeddings.parameters():
+            param.requires_grad = False
+       
+        self.embedding_model = nn.Linear(
+            768, 
+            species_embedding_dim
+        )
+        self.image_model.to(self.device)
+
+        self.classification_head = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(species_embedding_dim, num_classes) 
+        )
+        self.image_model.to(self.device)
+
+    def embed_image(self, x):
+        return self.image_model(x).pooler_output
     
-train_size = int(0.8 * len(full_dataset))
-test_size = len(full_dataset) - train_size
+    def prepare_train(self):
+        self.image_model.pooler.train()
+        self.embedding_model.train()
+        self.classification_head.train()
 
-train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+    def test_stats(self, all_labels, all_probs, test_loss):
+        stats = {
+            "test_loss": test_loss,
+        }
+        for k in self.metrics.keys():
+            stats[k] = self.metrics[k](all_probs, all_labels).item()
+        return stats
+    def forward(self, x):
+        return self.classification_head(self.embedding_model(x))
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
-labels = full_dataset.classes
-num_new_classes = len(labels)
+def setup_data(
+    data_dir,
+    model,
+):
+    full_dataset = datasets.ImageFolder(
+        data_dir, 
+        transform=model.image_transform
+    )
+    
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    
+    train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=model.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=model.batch_size)
+    return train_loader, test_loader 
 
 
-# ------------------------
-# 3. Fine-Tuning Setup
-# ------------------------
-
-model = ResNetSpecieClassifier(resnet)
-model.to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
-loss_fn = nn.CrossEntropyLoss()
-
-for param in model.backbone.parameters():
-    param.requires_grad = False
-for param in model.species_embedding_mlp.parameters():
-    param.requires_grad = True
-for param in model.classification_head.parameters():
-    param.requires_grad = True
-
-# ------------------------
-# 4. Training Loop
-# ------------------------
-epochs = 25
-for epoch in range(epochs):
-    _ = model.train()
-    total_loss = 0
+def train_loop(model, optimizer, criterion, train_loader):
+    model.prepare_train()
+    running_loss = 0.0
     for images, labels in train_loader:
-        images, labels = images.to(device), labels.to(device)
+        images, labels = images.to(model.device), labels.to(model.device)
+        outputs = model.embed_image(images) 
+
+        logits = model(outputs)
+        loss = criterion(logits, labels)
 
         optimizer.zero_grad()
-        outputs = model(images)
-        loss = loss_fn(outputs, labels)
         loss.backward()
         optimizer.step()
-        total_loss += loss.item()
+
+        running_loss += loss.item()
+
+    return running_loss / len(train_loader)
 
 
-    _ = model.eval()
-    correct = 0
-    total = 0
+def test_loop(model, criterion, test_loader):
+    all_probs = []
+    all_labels = []
 
-    all_probs, all_labels = [], []
-
+    running_loss = 0.0
+    model.eval()
     with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
-            correct += (preds == labels).sum().item()
-            all_probs.append(torch.softmax(outputs, 0).to('cpu').numpy())
-            all_labels.append(labels.to('cpu').numpy())
-            total += labels.size(0)
-        
-    acc = correct / total
-    all_probs = np.concatenate(all_probs)
-    all_labels = np.concatenate(all_labels)
+        for images, labels in test_loader:
+            images, labels = images.to(model.device), labels.to(model.device)
+            vit_outputs = model.embed_image(images)
+            logits = model(vit_outputs)
+            probs = torch.softmax(logits, dim=1)
+            all_probs.append(probs)
+            all_labels.append(labels)
+            running_loss += criterion(logits, labels.to(model.device)).item()
 
-    _one_hot_labels = np.eye(model.num_classes)[all_labels]
-    test_map = sklearn.metrics.average_precision_score(
-            y_true=_one_hot_labels,  # one-hot encoding
-            y_score=all_probs,
-            average='macro'
-    )
-    print(f"[Epoch {epoch+1}/{epochs}] Loss: {total_loss/len(train_loader):.4f} | Val Acc: {acc:.4f} | Val MAP: {test_map:0.4f}")
+    test_loss = running_loss / len(test_loader)
+    all_probs = torch.concatenate(all_probs)
+    all_labels = torch.concatenate(all_labels)
+    return model.test_stats(all_labels, all_probs, test_loss)
 
 
+def train(model, img_dir, n_epochs, learning_rate):
+    model.to(model.device)
+    train_loader, test_loader = setup_data(img_dir, model)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    stat_dicts = []
+
+    for epoch in range(n_epochs):
+        train_loss = train_loop(model, optimizer, criterion, train_loader)
+        test_stats = test_loop(model, criterion, test_loader)
+
+        test_stats["train_loss"] = train_loss
+        test_stats["epoch"] = epoch
 
 
+        print(f"Epoch {epoch + 1} | Train Loss: {train_loss:.4f} ||| Test Loss: {test_stats["test_loss"]:.4f} | Test MAP: {test_stats["MAP"]:.4f} | Test Accuracy: {test_stats["accuracy"]:.4f}")
+        stat_dicts.append(test_stats)
+
+    return pd.DataFrame(stat_dicts)
 
 
-# ---- ------- -----------------------------
+def main(parser):
+    args = parser.parse_args()
+    base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 
-conf_mat = np.zeros((model.num_classes, model.num_classes))
+    model_name = args.model
 
-for inputs, labels in train_loader:
-    inputs, labels = inputs.to(device), labels.to(device)
-    outputs = model(inputs)
-    _, preds = torch.max(outputs, 1)
+    print(args)
     
-    for (i,p) in enumerate(preds):
-        conf_mat[labels[i], preds[i]] += 1
+    model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim)
 
-conf_mat += 1
-fig, ax = plt.subplots()
-im = ax.imshow(np.log(conf_mat))
-# Loop over data dimensions and create text annotations.
-for i in range(model.num_classes):
-    for j in range(model.num_classes):
-        text = ax.text(j, i, "%i" % (conf_mat[i, j] - 1),
-                       ha="center", va="center", color="w")
+    img_dir  = os.path.join(base_path, "data", "bombus_img")    
+    df = train(model, img_dir, args.nepoch, args.lr)
 
-plt.show()
+    csv_path = os.path.join(base_path, model_name+".csv")
+    df.to_csv(csv_path, index=False)
+ 
+
+if __name__=='__main__':   
+    parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
+    parser.add_argument('--cluster', action='store_true')
+    parser.add_argument('--model', choices=['vit', 'resnet'])
+    parser.add_argument('--nepoch', default=5, type=int)
+    parser.add_argument('--lr', default=5e-3, type=float)
+    parser.add_argument('--batchsize', default=256, type=int)
+    parser.add_argument('--embeddim', default=64, type=int)
+
+    main(parser)
+
+
+
