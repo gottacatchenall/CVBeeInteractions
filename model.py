@@ -1,146 +1,169 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-
-from transformers import AutoFeatureExtractor
-from transformers import AutoModel
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-
 import os
-import sklearn
 import numpy as np
+import sklearn
 
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from transformers import AutoImageProcessor, ResNetForImageClassification
+import matplotlib.pyplot as plt
 
-class SpeciesEmbeddingModel(nn.Module):
-    def __init__(self, 
-            num_classes,
-            species_embedding_dim = 128, 
-            batch_size = 256,
-        ):
-
+class ResNetSpecieClassifier(nn.Module):
+    def __init__(self, model, species_embedding_dim=16, num_classes=19):
         super().__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-
+        # keep everything except the classifier head
         self.num_classes = num_classes
-        self.batch_size = batch_size
-        self.species_embedding_dim = species_embedding_dim
+        self.backbone = model.resnet
 
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224-in21k")
-
-        self.image_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=self.feature_extractor.image_mean, 
-                std=self.feature_extractor.image_std),
-        ])
-
-        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224-in21k")
-        self.image_model.to(self.device)
-        self.image_model.eval() 
-        for param in self.image_model.parameters():
-            param.requires_grad = False
-
-
-        self.embedding_model = nn.Linear(
-            768, 
-            species_embedding_dim
+        self.species_embedding_mlp = nn.Sequential(
+            nn.Linear(2048, species_embedding_dim) 
         )
         self.classification_head = nn.Sequential(
             nn.ReLU(),
             nn.Linear(species_embedding_dim, num_classes) 
         )
 
+        # --- Freeze CNN layers  ---
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+        for param in self.species_embedding_mlp.parameters():
+            param.requires_grad = True
+        for param in self.classification_head.parameters():
+            param.requires_grad = True
+            
+    def resnet_embedding(self, x):
+        features = self.backbone(x, output_hidden_states=True)
+        return features.pooler_output.squeeze()
+
     def forward(self, x):
-        return self.classification_head(self.embedding_model(x))
+        return self.classification_head(self.species_embedding_mlp(self.resnet_embedding(x)))
 
 
-def setup_data(
-    data_dir,
-    model,
-):
-    full_dataset = datasets.ImageFolder(
-        data_dir, 
-        transform=model.image_transform
-    )
+# ------------------------
+# 1. Load Pretrained ResNet50
+# ------------------------
+model_name = "microsoft/resnet-50"
+processor = AutoImageProcessor.from_pretrained(model_name)
+resnet = ResNetForImageClassification.from_pretrained(
+    model_name,
+)
+device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+
+# ------------------------
+# 2. Prepare Data
+# ------------------------
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=processor.image_mean, std=processor.image_std),
+])
+batch_size = 256
+img_dir  = os.path.join("data/cropped_bombus/")
+
+full_dataset = datasets.ImageFolder(
+    img_dir, 
+    transform=transform
+)
     
-    train_size = int(0.8 * len(full_dataset))
-    test_size = len(full_dataset) - train_size
-    
-    train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+train_size = int(0.8 * len(full_dataset))
+test_size = len(full_dataset) - train_size
 
-    train_loader = DataLoader(train_dataset, batch_size=model.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=model.batch_size)
-    return train_loader, test_loader 
+train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size)
+
+labels = full_dataset.classes
+num_new_classes = len(labels)
 
 
-def train_loop(model, optimizer, criterion, train_loader):
-    model.train()
-    running_loss = 0.0
+# ------------------------
+# 3. Fine-Tuning Setup
+# ------------------------
+
+model = ResNetSpecieClassifier(resnet)
+model.to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
+loss_fn = nn.CrossEntropyLoss()
+
+for param in model.backbone.parameters():
+    param.requires_grad = False
+for param in model.species_embedding_mlp.parameters():
+    param.requires_grad = True
+for param in model.classification_head.parameters():
+    param.requires_grad = True
+
+# ------------------------
+# 4. Training Loop
+# ------------------------
+epochs = 25
+for epoch in range(epochs):
+    _ = model.train()
+    total_loss = 0
     for images, labels in train_loader:
-        images, labels = images.to(model.device), labels.to(model.device)
-        with torch.no_grad():
-            outputs = model.image_model(pixel_values=images).pooler_output 
-
-        logits = model(outputs)
-        loss = criterion(logits, labels)
+        images, labels = images.to(device), labels.to(device)
 
         optimizer.zero_grad()
+        outputs = model(images)
+        loss = loss_fn(outputs, labels)
         loss.backward()
         optimizer.step()
-
-        running_loss += loss.item()
-
-    return running_loss / len(train_loader)
+        total_loss += loss.item()
 
 
-def test_loop(model, criterion, test_loader):
-    all_probs = []
-    all_labels = []
+    _ = model.eval()
+    correct = 0
+    total = 0
 
-    running_loss = 0.0
-    model.eval()
+    all_probs, all_labels = [], []
+
     with torch.no_grad():
-        for images, labels in test_loader:
-            images = images.to(model.device)
-            vit_outputs = model.image_model(pixel_values=images).pooler_output
-            logits = model(vit_outputs)
-            probs = torch.softmax(logits, dim=1).cpu().numpy()
-            all_probs.append(probs)
-            all_labels.append(labels.numpy())
-            running_loss += criterion(logits, labels.to(model.device))
-
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            correct += (preds == labels).sum().item()
+            all_probs.append(torch.softmax(outputs, 0).to('cpu').numpy())
+            all_labels.append(labels.to('cpu').numpy())
+            total += labels.size(0)
+        
+    acc = correct / total
     all_probs = np.concatenate(all_probs)
     all_labels = np.concatenate(all_labels)
 
     _one_hot_labels = np.eye(model.num_classes)[all_labels]
-
-    
     test_map = sklearn.metrics.average_precision_score(
             y_true=_one_hot_labels,  # one-hot encoding
             y_score=all_probs,
             average='macro'
     )
-    test_loss = running_loss / len(test_loader)
-
-    return test_loss, test_map
-
-def train(n_epochs, learning_rate):
-    img_dir  = os.path.join("data/img_120/")
-    model = SpeciesEmbeddingModel(num_classes=18)
-    model.to(model.device)
-
-    train_loader, test_loader = setup_data(img_dir, model)
-
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    for epoch in range(n_epochs):
-        train_loss = train_loop(model, optimizer, criterion, train_loader)
-        test_loss, test_map = test_loop(model, criterion, test_loader)
-        
-        print(f"Epoch {epoch + 1} | Train Loss: {train_loss:.4f} ||| Test Loss: {test_loss:.4f} | Test MAP: {test_map:.4f}" )
+    print(f"[Epoch {epoch+1}/{epochs}] Loss: {total_loss/len(train_loader):.4f} | Val Acc: {acc:.4f} | Val MAP: {test_map:0.4f}")
 
 
-train(3, 2e-4)
+
+
+
+
+# ---- ------- -----------------------------
+
+conf_mat = np.zeros((model.num_classes, model.num_classes))
+
+for inputs, labels in train_loader:
+    inputs, labels = inputs.to(device), labels.to(device)
+    outputs = model(inputs)
+    _, preds = torch.max(outputs, 1)
+    
+    for (i,p) in enumerate(preds):
+        conf_mat[labels[i], preds[i]] += 1
+
+conf_mat += 1
+fig, ax = plt.subplots()
+im = ax.imshow(np.log(conf_mat))
+# Loop over data dimensions and create text annotations.
+for i in range(model.num_classes):
+    for j in range(model.num_classes):
+        text = ax.text(j, i, "%i" % (conf_mat[i, j] - 1),
+                       ha="center", va="center", color="w")
+
+plt.show()
