@@ -190,7 +190,8 @@ def train_loop(model, optimizer, criterion, train_loader):
     running_loss = 0.0
     for images, labels in train_loader:
         images, labels = images.to(model.device), labels.to(model.device)
-        outputs = model.embed_image(images) 
+        with torch.no_grad():
+            outputs = model.embed_image(images) 
 
         logits = model(outputs)
         loss = criterion(logits, labels)
@@ -254,12 +255,12 @@ def main(parser):
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 
     model_name = args.model
-
-    print(args)
     
     model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim)
 
     img_dir  = os.path.join(base_path, "data", "bombus_img")    
+    print("Starting training on {model.device} with dir {img_dir}")
+
     df = train(model, img_dir, args.nepoch, args.lr)
 
     csv_path = os.path.join(base_path, model_name+".csv")
