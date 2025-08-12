@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=00:30:00
+#SBATCH --time=00:10:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
 #SBATCH --gres=gpu:1 # request a GPU
@@ -16,4 +16,4 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install --no-index -r requirements.txt
 
-python model.py --cluster --nepoch 10 --model vit --lr 1e-4 
+python resnet_simpler.py 
