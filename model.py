@@ -180,8 +180,10 @@ def setup_data(
     
     train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=model.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=model.batch_size)
+    pin_mem = torch.cuda.is_available()
+
+    train_loader = DataLoader(train_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
+    test_loader = DataLoader(test_dataset, batch_size=model.batch_size, pin_memory=pin_mem)
     return train_loader, test_loader 
 
 
