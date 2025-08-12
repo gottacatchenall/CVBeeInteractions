@@ -19,7 +19,7 @@ import torchmetrics
 
 import argparse
 
-
+torch.set_float32_matmul_precision('high')
 
 class ResNetSpeciesEmbeddingModel(nn.Module):
     def __init__(
