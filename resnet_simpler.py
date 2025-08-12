@@ -136,7 +136,8 @@ def main():
     total_time = time.time() - total_start
 
     print(f"Total time: {total_time}")
-    print(f"Mean images per sec: {sum(perf)/len(perf)}")
+    print(f"Mean images per sec first iter: {perf[0]}")
+    print(f"Mean images per sec subseq iter: {sum(perf[1:])/len(perf[1:])}")
 
 if __name__=='__main__':
    main()
