@@ -97,8 +97,14 @@ def main():
 
     # Model init
     rnsem = ResNetSpeciesEmbeddingModel(resnet)
+
+    compilestart = time.time()
     if torch.cuda.is_available():
         rnsem = torch.compile(rnsem)
+    compileend = time.time()
+
+    print(f"Compile Time: {compileend - compilestart} seconds")
+
     rnsem = rnsem.to(device) # Load model on the GPU
 
 
