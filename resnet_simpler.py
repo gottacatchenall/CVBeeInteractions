@@ -18,6 +18,8 @@ from torchvision import datasets, transforms
 from transformers import AutoImageProcessor, ResNetForImageClassification
 import torchmetrics
 
+torch.set_float32_matmul_precision('high')
+
 class ResNetSpeciesEmbeddingModel(nn.Module):
     def __init__(
         self, 
@@ -56,9 +58,11 @@ parser.add_argument('--lr', default=1e-3, type=float, help='')
 parser.add_argument('--batch_size', type=int, default=512, help='')
 parser.add_argument('--num_epoch', type=int, default=2, help='')
 parser.add_argument('--num_workers', type=int, default=0, help='')
+parser.add_argument('--cluster', action='store_true')
 
 
 def main():
+    base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 
     args = parser.parse_args()
 
@@ -76,7 +80,7 @@ def main():
         transforms.Normalize(mean=processor.image_mean, std=processor.image_std),
     ])
     batch_size = args.batch_size
-    img_dir  = os.path.join("data/cropped_bombus/")
+    img_dir  = os.path.join(base_path, "data", "bombus_img")
     full_dataset = datasets.ImageFolder(
         img_dir, 
         transform=transform
