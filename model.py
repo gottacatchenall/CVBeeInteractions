@@ -37,14 +37,14 @@ class ResNetSpeciesEmbeddingModel(nn.Module):
 
 
         model_name = "microsoft/resnet-50"
-        self.image_processor = AutoImageProcessor.from_pretrained(model_name)
+        self.image_processor = AutoImageProcessor.from_pretrained(model_name, local_files_only=True)
         self.image_transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=self.image_processor.image_mean, std=self.image_processor.image_std),
         ])
 
-        self.image_model = ResNetForImageClassification.from_pretrained(model_name)
+        self.image_model = ResNetForImageClassification.from_pretrained(model_name, local_files_only=True)
         self.image_model.to(self.device)
 
         self.embedding_model = nn.Sequential(
@@ -117,7 +117,7 @@ class ViTSpeciesEmbeddingModel(nn.Module):
             param.requires_grad = False
         """
 
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224")
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
 
         self.image_transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -127,7 +127,7 @@ class ViTSpeciesEmbeddingModel(nn.Module):
                 std=self.feature_extractor.image_std),
         ])
 
-        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224")
+        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
         self.image_model.to(self.device)
 
         for param in self.image_model.encoder.parameters():
