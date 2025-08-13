@@ -27,6 +27,8 @@ args = parser.parse_args()
  
 device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
+torch.set_float32_matmul_precision('high')
+
 
 class ViTSpeciesEmbeddingModel(nn.Module):
     def __init__(
@@ -34,13 +36,11 @@ class ViTSpeciesEmbeddingModel(nn.Module):
         model,
         num_classes=19,
         species_embedding_dim = 128, 
-        batch_size = 256,
     ):
 
         super().__init__()
 
         self.num_classes = num_classes
-        self.batch_size = batch_size
         self.species_embedding_dim = species_embedding_dim
 
         self.image_model = model
@@ -109,13 +109,12 @@ full_dataset = datasets.ImageFolder(
     transform=image_transform,
 )
 
-# setup loader
-pin_mem = torch.cuda.is_available()
-full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
+
 
 learning_rate = 3e-4
 criterion = nn.CrossEntropyLoss().to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+pin_mem = torch.cuda.is_available()
 
 # dummy batch
 starttime = time.time()
@@ -124,14 +123,21 @@ e = model(dummy)
 print(f"Dummy batch time: {time.time() - starttime} seconds")
 
 
-# first real batch 
-starttime = time.time()
-images, labels = next(iter(full_loader))
-images, labels = images.to(device), labels.to(device)
-logits = model(images)
-loss = criterion(logits, labels)
-optimizer.zero_grad()
-loss.backward()
-optimizer.step()
+for bs in [64, 128, 512, 1024]:
+    # setup loader
+    full_loader = DataLoader(full_dataset, batch_size=bs, shuffle=True, pin_memory=pin_mem)
 
-print(f"first real batch time: {time.time() - starttime} seconds")
+    starttime = time.time()
+    images, labels = next(iter(full_loader))
+    images, labels = images.to(device), labels.to(device)
+    logits = model(images)
+    loss = criterion(logits, labels)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    batch_time = time.time() - starttime
+    batch_time*len(full_loader)
+    print(f"Batch Size {bs} time: {batch_time} seconds -- Est Epoch Time:    {batch_time*len(full_loader)}")
+
+
