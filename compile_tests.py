@@ -23,11 +23,13 @@ import os
 
 parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
 parser.add_argument('--cluster', action='store_true')
+parser.add_argument('--num_workers', type=int, default=0, help='')
+
 args = parser.parse_args()
  
 device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision('medium')
 
 
 class ViTSpeciesEmbeddingModel(nn.Module):
@@ -37,14 +39,10 @@ class ViTSpeciesEmbeddingModel(nn.Module):
         num_classes=19,
         species_embedding_dim = 128, 
     ):
-
         super().__init__()
-
         self.num_classes = num_classes
         self.species_embedding_dim = species_embedding_dim
-
         self.image_model = model
-
         self.embedding_model = nn.Linear(
             768, 
             species_embedding_dim
@@ -53,7 +51,6 @@ class ViTSpeciesEmbeddingModel(nn.Module):
             nn.ReLU(),
             nn.Linear(species_embedding_dim, num_classes) 
         )
-
     def forward(self, x):
         return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
     
