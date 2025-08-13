@@ -1,0 +1,39 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from transformers import AutoModel
+
+import time
+import os
+
+# -------------------------------
+# 1. Load model and compile
+# -------------------------------
+model = AutoModel.from_pretrained(
+    "google/vit-base-patch16-224", 
+    local_files_only=True
+).cuda()
+
+
+starttime = time.start()
+model = torch.compile(
+    model,
+    mode="reduce-overhead",  # minimal fusion, fast compile
+    backend="aot_eager"
+)
+
+print(f"Compile time: {time.time() - starttime} seconds")
+
+# -------------------------------
+# 2. Warmup with a small dummy batch
+# -------------------------------
+starttime = time.start()
+print(f"Dummy batch time: {time.time() - starttime} seconds")
+dummy = torch.randn(1, 3, 224, 224, device="cuda")
+_ = model(dummy)  # triggers kernel compilation / fusion
+
+print(f"Compile time {time.time() - starttime}")
+
+
+
+os.path.join("/scratch", "mcatchen", "precompiled_vit.pt")
