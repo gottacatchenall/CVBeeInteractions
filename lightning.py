@@ -41,11 +41,11 @@ class SpeciesImageDataset(Dataset):
         self.target_transform = target_transform
 
     def __len__(self):
-        return len(self.img_labels)
+        return len(self.labels)
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.image_relpaths[idx])
-        image = torchvision.io.read_image(img_path)
+        image = torchvision.transforms.functional.to_pil_image(torchvision.io.read_image(img_path))
         label = self.labels[idx]
         if self.transform:
             image = self.transform(image)
@@ -53,12 +53,12 @@ class SpeciesImageDataset(Dataset):
             label = self.target_transform(label)
         return image, label
 
-class SpeciesImagesDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir = "./", batch_size = 256):
+class SpeciesImageDataModule(pl.LightningDataModule):
+    def __init__(self, data_dir = "./", batch_size = 256, transform = None):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
-        self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        self.transform = transform
 
     def prepare_data(self):
         pass 
@@ -71,6 +71,9 @@ class SpeciesImagesDataModule(pl.LightningDataModule):
             )
         if stage == "test":
             self.test = SpeciesImageDataset(self.data_dir, train=False, transform=self.transform)
+
+        if stage == "predict":
+            self.predict = SpeciesImageDataset(self.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=32)
@@ -88,6 +91,7 @@ parser.add_argument('--lr', default=1e-3, help='')
 parser.add_argument('--max_epochs', type=int, default=4, help='')
 parser.add_argument('--batch_size', type=int, default=512, help='')
 parser.add_argument('--num_workers', type=int, default=0, help='')
+parser.add_argument('--cluster', action='store_true')
 
 def main():
     print("Starting...")
@@ -109,7 +113,7 @@ def main():
                 "google/vit-base-patch16-224", 
                 local_files_only=True
             )
-            self.image_model.train()
+            self.image_model.eval()
             self.embedding_model = nn.Linear(
                 768, 
                 species_embedding_dim
@@ -131,8 +135,6 @@ def main():
 
         def configure_optimizers(self):
             return torch.optim.Adam(self.parameters(), lr=args.lr)
-
-    net = ViTSpeciesEmbeddingModel()
 
     class Benchmark(pl.Callback):
         """A callback that measures the median execution time between the start and end of a batch."""
@@ -162,17 +164,24 @@ def main():
         We also set progress_bar_refresh_rate=0 to avoid writing a progress bar to the logs, 
         which can cause issues due to updating logs too frequently.
     """
+    if args.cluster:
+        num_gpus = torch.cuda.device_count()
+        num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
+        strategy = 'ddp'
+    else: 
+        num_gpus = 1
+        num_nodes = 1
+        strategy = 'auto'
 
-    num_gpus = torch.cuda.device_count()
-    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
+    logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="my_exp_name")
 
-    logger = pl.loggers.CSVLogger(os.joinpath("/scratch", "mcatchen", "lightning_logs"), name="my_exp_name")
+    
 
     trainer = pl.Trainer(
         accelerator="gpu", 
         devices=num_gpus, 
         num_nodes=num_nodes, 
-        strategy='ddp', 
+        strategy=strategy, 
         profiler = "simple",
         max_epochs = args.max_epochs, 
         enable_progress_bar=False,
@@ -187,8 +196,11 @@ def main():
             mean=feature_extractor.image_mean, 
             std=feature_extractor.image_std),
     ])
-    species_data = SpeciesImagesDataModule(
-        data_dir = os.path.join("/scratch", "mcatchen", "iNatImages", "data", "bombus_img"),
+
+    base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
+
+    species_data = SpeciesImageDataModule(
+        data_dir = os.path.join(base_path, "data", "bombus_img"),
         batch_size = args.batch_size,
         transform=transform
     )
@@ -202,7 +214,7 @@ def main():
         accelerator="gpu", 
         devices=num_gpus, 
         num_nodes=num_nodes, 
-        strategy='ddp', 
+        strategy=strategy,
         #profiler = "simple",
         max_steps=10,
         #max_epochs = args.max_epochs, 
@@ -210,7 +222,7 @@ def main():
         #logger = logger
         callbacks=[benchmark]
     ) 
-    trainer.fit(model)
+    trainer.fit(model, species_data)
     eager_time = benchmark.median_time()
 
     # Measure the median iteration time with compiled model
@@ -219,7 +231,7 @@ def main():
         accelerator="gpu", 
         devices=num_gpus, 
         num_nodes=num_nodes, 
-        strategy='ddp', 
+        strategy=strategy, 
         #profiler = "simple",
         max_steps=10,
         #max_epochs = args.max_epochs, 
@@ -227,11 +239,9 @@ def main():
         #logger = logger
         callbacks=[benchmark]
     ) 
-    trainer.fit(compiled_model)
+    trainer.fit(compiled_model, species_data)
     compile_time = benchmark.median_time()
 
-
-    trainer.fit(net,species_data)
 
     speedup = eager_time / compile_time
     print(f"Eager median time: {eager_time:.4f} seconds")
