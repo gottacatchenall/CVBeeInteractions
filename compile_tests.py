@@ -29,11 +29,11 @@ print(f"Compile time: {time.time() - starttime} seconds")
 # -------------------------------
 starttime = time.start()
 print(f"Dummy batch time: {time.time() - starttime} seconds")
-dummy = torch.randn(1, 3, 224, 224, device="cuda")
+dummy = torch.randn(2, 3, 224, 224, device="cuda")
 _ = model(dummy)  # triggers kernel compilation / fusion
 
 print(f"Compile time {time.time() - starttime}")
 
 
-
-os.path.join("/scratch", "mcatchen", "precompiled_vit.pt")
+model_path = os.path.join("/scratch", "mcatchen", "precompiled_vit.pt")
+torch.save(model, model_path)
