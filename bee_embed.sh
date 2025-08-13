@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem=16G
 #SBATCH --job-name=bee_embed_test
-#SBATCH --output=EMBED_TEST_%x_$j_.out
+#SBATCH --output=EMBED_TEST_%x_%j_.out
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env

@@ -299,19 +299,21 @@ def get_mean_embedding(data_dir, model):
 def main(parser):
     args = parser.parse_args()
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
+    dir_name = "plant_img" if args.species == "plants" else "bombus_img"
+    
+    img_dir  = os.path.join(base_path, "data", dir_name)    
+
+    num_classes = len(os.listdir(img_dir))
 
     model_name = args.model
     
-    model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim)
+    model = ViTSpeciesEmbeddingModel(batch_size=args.batchsize,species_embedding_dim=args.embeddim, num_classes = num_classes) if args.model == "vit" else ResNetSpeciesEmbeddingModel(batch_size=args.batchsize, species_embedding_dim=args.embeddim, num_classes = num_classes)
 
     if torch.cuda.is_available():
         model = torch.compile(model)
 
-    dir_name = "plant_img" if args.species == "plants" else "bombus_img"
 
-    img_dir  = os.path.join(base_path, "data", dir_name)    
     print(f"Starting training on {model.device} with dir {img_dir}")
-
     df = train(model, img_dir, args.nepoch, args.lr, base_path, args)
 
     bin_path = os.path.join(base_path, args.species + "_mean_embed_" + model_name + ".bin")
