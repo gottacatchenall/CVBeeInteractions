@@ -54,12 +54,12 @@ class SpeciesImageDataset(Dataset):
         return image, label
 
 class SpeciesImageDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir = "./", batch_size = 256, transform = None):
+    def __init__(self, data_dir = "./", batch_size = 256, num_workers=0, transform = None):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.transform = transform
-
+        self.num_workers = num_workers
     def prepare_data(self):
         pass 
     def setup(self, stage):
@@ -76,13 +76,13 @@ class SpeciesImageDataModule(pl.LightningDataModule):
             self.predict = SpeciesImageDataset(self.data_dir, train=False, transform=self.transform)
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=32)
+        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=32)
+        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=32)
+        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
 
 
 
@@ -202,7 +202,8 @@ def main():
     species_data = SpeciesImageDataModule(
         data_dir = os.path.join(base_path, "data", "bombus_img"),
         batch_size = args.batch_size,
-        transform=transform
+        transform=transform,
+        num_workers= args.num_workers,
     )
 
     model = ViTSpeciesEmbeddingModel()
