@@ -27,7 +27,7 @@ print(f"Compile time: {time.time() - starttime} seconds")
 # -------------------------------
 # 2. Warmup with a small dummy batch
 # -------------------------------
-starttime = time.start()
+starttime = time.time()
 print(f"Dummy batch time: {time.time() - starttime} seconds")
 dummy = torch.randn(2, 3, 224, 224, device="cuda")
 _ = model(dummy)  # triggers kernel compilation / fusion
