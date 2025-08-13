@@ -89,7 +89,7 @@ class ViTSpeciesEmbeddingModel(nn.Module):
             stats[k] = self.metrics[k](all_probs, all_labels).item()
         return stats
     def forward(self, x):
-        return self.classification_head(self.embedding_model(x))
+        return self.classification_head(self.embedding_model(self.embed_image(x)))
     
 
 model = ViTSpeciesEmbeddingModel().cuda()
@@ -105,8 +105,7 @@ print(f"Compile time: {time.time() - starttime} seconds")
 
 starttime = time.time()
 dummy = torch.randn(2, 3, 224, 224, device="cuda")
-e = model.image_model(dummy).pooler_output
-model.forward(e)
+e = model(dummy)
 print(f"Dummy batch time: {time.time() - starttime} seconds")
 
 
@@ -121,22 +120,18 @@ full_dataset = datasets.ImageFolder(
 pin_mem = torch.cuda.is_available()
 full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
 
-# first epoch 
+# first batch 
 learning_rate = 3e-4
 starttime = time.time()
 criterion = nn.CrossEntropyLoss().to(model.device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-model.prepare_train()
-for images, labels in full_loader:
-    images, labels = images.to(model.device), labels.to(model.device)
-    with torch.no_grad():
-        outputs = model.embed_image(images) 
+images, labels = next(iter(full_dataset))
+images, labels = images.to(model.device), labels.to(model.device)
+logits = model(images)
+loss = criterion(logits, labels)
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
 
-    logits = model(outputs)
-    loss = criterion(logits, labels)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-print(f"First epoch time: {time.time() - starttime} seconds")
+print(f"first real batch time: {time.time() - starttime} seconds")
