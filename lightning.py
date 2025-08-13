@@ -19,6 +19,14 @@ import pandas as pd
 import statistics
 
 
+parser = argparse.ArgumentParser(description='cifar10 classification models, pytorch-lightning parallel test')
+parser.add_argument('--lr', default=1e-3, help='')
+parser.add_argument('--max_epochs', type=int, default=4, help='')
+parser.add_argument('--batch_size', type=int, default=512, help='')
+parser.add_argument('--num_workers', type=int, default=0, help='')
+parser.add_argument('--cluster', action='store_true')
+
+
 class SpeciesImageDataset(Dataset):
     def __init__(
             self, 
@@ -84,14 +92,6 @@ class SpeciesImageDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
 
-
-
-parser = argparse.ArgumentParser(description='cifar10 classification models, pytorch-lightning parallel test')
-parser.add_argument('--lr', default=1e-3, help='')
-parser.add_argument('--max_epochs', type=int, default=4, help='')
-parser.add_argument('--batch_size', type=int, default=512, help='')
-parser.add_argument('--num_workers', type=int, default=0, help='')
-parser.add_argument('--cluster', action='store_true')
 
 def main():
     print("Starting...")
