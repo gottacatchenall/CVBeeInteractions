@@ -120,13 +120,14 @@ full_dataset = datasets.ImageFolder(
 pin_mem = torch.cuda.is_available()
 full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
 
-# first batch 
 learning_rate = 3e-4
-starttime = time.time()
 criterion = nn.CrossEntropyLoss().to(model.device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-images, labels = next(iter(full_dataset))
+# first batch 
+
+starttime = time.time()
+images, labels = next(iter(full_loader))
 images, labels = images.to(model.device), labels.to(model.device)
 logits = model(images)
 loss = criterion(logits, labels)
