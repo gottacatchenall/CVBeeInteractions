@@ -2,7 +2,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
-#SBATCH --gres=gpu:1 # request a GPU
+#SBATCH --gpus=a100_4g.20gb:1
 #SBATCH --tasks-per-node=1 
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem=16G
@@ -15,4 +15,4 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install --no-index -r requirements.txt
 
-python model.py --cluster --nepoch 151 --model vit --lr 3e-4 --species bees
+python model.py --cluster --batchsize 64 --nepoch 151 --model vit --lr 3e-4 --species bees
