@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=00:15:00
+#SBATCH --time=00:25:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
 #SBATCH --gres=gpu:1 # request a GPU
@@ -17,4 +17,4 @@ pip install --no-index -r requirements.txt
 
 export TORCHINDUCTOR_CACHE_DIR=/project/def-tpoisot/mcatchen/TORCHINDUCTOR_CACHE
 
-python compile_tests.py 
+python compile_tests.py --cluster

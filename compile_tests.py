@@ -21,6 +21,10 @@ import argparse
 import time
 import os
 
+parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
+parser.add_argument('--cluster', action='store_true')
+args = parser.parse_args()
+ 
 class ViTSpeciesEmbeddingModel(nn.Module):
     def __init__(self, 
         num_classes=19,
@@ -105,3 +109,34 @@ e = model.image_model(dummy).pooler_output
 model.forward(e)
 print(f"Dummy batch time: {time.time() - starttime} seconds")
 
+
+base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
+img_dir  = os.path.join(base_path, "data", "bombus_img")   
+
+full_dataset = datasets.ImageFolder(
+    img_dir,
+    transform=model.image_transform,
+)
+
+pin_mem = torch.cuda.is_available()
+full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
+
+# first epoch 
+learning_rate = 3e-4
+starttime = time.time()
+criterion = nn.CrossEntropyLoss().to(model.device)
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+model.prepare_train()
+for images, labels in full_loader:
+    images, labels = images.to(model.device), labels.to(model.device)
+    with torch.no_grad():
+        outputs = model.embed_image(images) 
+
+    logits = model(outputs)
+    loss = criterion(logits, labels)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+print(f"First epoch time: {time.time() - starttime} seconds")
