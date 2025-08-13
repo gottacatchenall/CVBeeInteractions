@@ -6,8 +6,8 @@
 #SBATCH --tasks-per-node=1 
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem=8G
-#SBATCH --job-name=compile_test
-#SBATCH --output=compile_test_%x_%j_.out
+#SBATCH --job-name=TEST_compile
+#SBATCH --output=%x_%j_.out
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
