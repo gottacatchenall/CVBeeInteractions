@@ -11,7 +11,6 @@ import os
 import pandas as pd
 import numpy as np
 import argparse
-import json
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -231,7 +230,7 @@ def test_loop(model, criterion, test_loader):
     return model.test_stats(all_labels, all_probs, test_loss)
 
 
-def train(model, img_dir, n_epochs, learning_rate):
+def train(model, img_dir, n_epochs, learning_rate, base_path, args):
     model.to(model.device)
     train_loader, test_loader = setup_data(img_dir, model)
 
@@ -240,7 +239,16 @@ def train(model, img_dir, n_epochs, learning_rate):
 
     stat_dicts = []
 
+    job_id = os.getenv("SLURM_ARRAY_JOB_ID") if args.cluster else 0
+
+
     for epoch in range(n_epochs):
+        if epoch % 10 == 0 and epoch > 0:
+            checkpoint_name = f"{args.species}_{args.model}_EPOCH{epoch}_JOB{job_id}.bin"
+            checkpoint_path = os.path.join(base_path, checkpoint_name)
+            torch.save(model.state_dict(), checkpoint_path)
+
+
         train_loss = train_loop(model, optimizer, criterion, train_loader)
         test_stats = test_loop(model, criterion, test_loader)
 
@@ -263,9 +271,9 @@ def get_mean_embedding(data_dir, model):
     full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
 
     embed_dict = {
-        c: torch.zeros(model.species_embedding_dim)
+        c: torch.zeros(model.species_embedding_dim).to(model.device)
         for c in full_dataset.class_to_idx.values()
-    }.to(model.device)
+    }
     
     
 
@@ -280,11 +288,11 @@ def get_mean_embedding(data_dir, model):
                 embed_dict[l.item()] += embeddings[i,:]
     
     
-    idx_to_name = {full_dataset.class_to_idx[k]:k for k in full_dataset.class_to_idx.keys()}.to(model.device)
-    mean_embed_dict = {}.to(model.device)
+    idx_to_name = {full_dataset.class_to_idx[k]:k for k in full_dataset.class_to_idx.keys()}
+    mean_embed_dict = {}
 
     for i in range(model.num_classes):
-        mean_embed_dict[idx_to_name[i]] = embed_dict[i] / len(full_loader)
+        mean_embed_dict[idx_to_name[i]] = embed_dict[i].cpu() / len(full_loader)
 
     return mean_embed_dict
 
@@ -304,17 +312,12 @@ def main(parser):
     img_dir  = os.path.join(base_path, "data", dir_name)    
     print(f"Starting training on {model.device} with dir {img_dir}")
 
-    df = train(model, img_dir, args.nepoch, args.lr)
+    df = train(model, img_dir, args.nepoch, args.lr, base_path, args)
 
-    json_path = os.path.join(base_path, "mean_embed_" + model_name + ".json")
+    bin_path = os.path.join(base_path, args.species + "_mean_embed_" + model_name + ".bin")
     
     embed_dict = get_mean_embedding(img_dir, model)
-    embed_dict.cpu()
-    torch.save(embed_dict, json_path)
-    #with open(json_path, 'w') as fp:
-    #    json.dump(embed_dict, fp)
-
-
+    torch.save(embed_dict, bin_path)
 
     csv_path = os.path.join(base_path, model_name+".csv")
     df.to_csv(csv_path, index=False)
