@@ -15,7 +15,7 @@ model = AutoModel.from_pretrained(
 ).cuda()
 
 
-starttime = time.start()
+starttime = time.time()
 model = torch.compile(
     model,
     mode="reduce-overhead",  # minimal fusion, fast compile
