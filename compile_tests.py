@@ -25,74 +25,63 @@ parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Z
 parser.add_argument('--cluster', action='store_true')
 args = parser.parse_args()
  
+device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+
+
 class ViTSpeciesEmbeddingModel(nn.Module):
-    def __init__(self, 
+    def __init__(
+        self, 
+        model,
         num_classes=19,
         species_embedding_dim = 128, 
         batch_size = 256,
     ):
 
         super().__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.species_embedding_dim = species_embedding_dim
 
-        self.metrics = {
-            "AUROC": torchmetrics.AUROC(task="multiclass", num_classes=self.num_classes).to(self.device),
-            "MAP": torchmetrics.AveragePrecision(task="multiclass", num_classes=self.num_classes).to(self.device), 
-            "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=self.num_classes).to(self.device)
-        }
+        self.image_model = model
 
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
-
-        self.image_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=self.feature_extractor.image_mean, 
-                std=self.feature_extractor.image_std),
-        ])
-
-        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
-        self.image_model.to(self.device)
-
-        for param in self.image_model.encoder.parameters():
-            param.requires_grad = False
-        for param in self.image_model.embeddings.parameters():
-            param.requires_grad = False
-       
         self.embedding_model = nn.Linear(
             768, 
             species_embedding_dim
         )
-
         self.classification_head = nn.Sequential(
             nn.ReLU(),
             nn.Linear(species_embedding_dim, num_classes) 
         )
 
-    def embed_image(self, x):
-        return self.image_model(x).pooler_output
-    
-    def prepare_train(self):
-        self.image_model.pooler.train()
-        self.embedding_model.train()
-        self.classification_head.train()
-
-    def test_stats(self, all_labels, all_probs, test_loss):
-        stats = {
-            "test_loss": test_loss,
-        }
-        for k in self.metrics.keys():
-            stats[k] = self.metrics[k](all_probs, all_labels).item()
-        return stats
     def forward(self, x):
-        return self.classification_head(self.embedding_model(self.embed_image(x)))
+        return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
     
 
-model = ViTSpeciesEmbeddingModel().cuda()
+
+def test_stats(num_classes, all_labels, all_probs, test_loss):
+    stats = {
+        "test_loss": test_loss,
+    }
+    metrics = {
+        "AUROC": torchmetrics.AUROC(task="multiclass", num_classes=num_classes).to(device),
+        "MAP": torchmetrics.AveragePrecision(task="multiclass", num_classes=num_classes).to(device), 
+        "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=num_classes).to(device)
+    }
+
+    for k in metrics.keys():
+        stats[k] = metrics[k](all_probs, all_labels).item()
+    return stats
+
+vit = AutoModel.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
+
+
+model = ViTSpeciesEmbeddingModel(vit).to(device)
+for param in model.image_model.encoder.parameters():
+    param.requires_grad = False
+for param in model.image_model.embeddings.parameters():
+    param.requires_grad = False
+
 
 starttime = time.time()
 model = torch.compile(
@@ -103,32 +92,42 @@ model = torch.compile(
 
 print(f"Compile time: {time.time() - starttime} seconds")
 
-starttime = time.time()
-dummy = torch.randn(2, 3, 224, 224, device="cuda")
-e = model(dummy)
-print(f"Dummy batch time: {time.time() - starttime} seconds")
 
-
+# load data
 base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 img_dir  = os.path.join(base_path, "data", "bombus_img")   
-
+feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
+image_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=feature_extractor.image_mean, 
+        std=feature_extractor.image_std),
+])
 full_dataset = datasets.ImageFolder(
     img_dir,
-    transform=model.image_transform,
+    transform=image_transform,
 )
 
+# setup loader
 pin_mem = torch.cuda.is_available()
 full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
 
 learning_rate = 3e-4
-criterion = nn.CrossEntropyLoss().to(model.device)
+criterion = nn.CrossEntropyLoss().to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# first batch 
+# dummy batch
+starttime = time.time()
+dummy = torch.randn(2, 3, 224, 224).to(device)
+e = model(dummy)
+print(f"Dummy batch time: {time.time() - starttime} seconds")
 
+
+# first real batch 
 starttime = time.time()
 images, labels = next(iter(full_loader))
-images, labels = images.to(model.device), labels.to(model.device)
+images, labels = images.to(device), labels.to(device)
 logits = model(images)
 loss = criterion(logits, labels)
 optimizer.zero_grad()
