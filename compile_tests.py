@@ -2,20 +2,80 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from transformers import AutoModel
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 import time
 import os
 
+class ViTSpeciesEmbeddingModel(nn.Module):
+    def __init__(self, 
+        num_classes=19,
+        species_embedding_dim = 128, 
+        batch_size = 256,
+    ):
 
-"""
-# -------------------------------
-# 1. Load model and compile
-# -------------------------------
-model = AutoModel.from_pretrained(
-    "google/vit-base-patch16-224", 
-    local_files_only=True
-).cuda()
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
+        self.num_classes = num_classes
+        self.batch_size = batch_size
+        self.species_embedding_dim = species_embedding_dim
+
+        self.metrics = {
+            "AUROC": torchmetrics.AUROC(task="multiclass", num_classes=self.num_classes).to(self.device),
+            "MAP": torchmetrics.AveragePrecision(task="multiclass", num_classes=self.num_classes).to(self.device), 
+            "accuracy": torchmetrics.Accuracy(task="multiclass", num_classes=self.num_classes).to(self.device)
+        }
+
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
+
+        self.image_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=self.feature_extractor.image_mean, 
+                std=self.feature_extractor.image_std),
+        ])
+
+        self.image_model = AutoModel.from_pretrained("google/vit-base-patch16-224", local_files_only=True)
+        self.image_model.to(self.device)
+
+        for param in self.image_model.encoder.parameters():
+            param.requires_grad = False
+        for param in self.image_model.embeddings.parameters():
+            param.requires_grad = False
+       
+        self.embedding_model = nn.Linear(
+            768, 
+            species_embedding_dim
+        )
+
+        self.classification_head = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(species_embedding_dim, num_classes) 
+        )
+
+    def embed_image(self, x):
+        return self.image_model(x).pooler_output
+    
+    def prepare_train(self):
+        self.image_model.pooler.train()
+        self.embedding_model.train()
+        self.classification_head.train()
+
+    def test_stats(self, all_labels, all_probs, test_loss):
+        stats = {
+            "test_loss": test_loss,
+        }
+        for k in self.metrics.keys():
+            stats[k] = self.metrics[k](all_probs, all_labels).item()
+        return stats
+    def forward(self, x):
+        return self.classification_head(self.embedding_model(x))
+    
+
+model = ViTSpeciesEmbeddingModel().cuda()
 
 starttime = time.time()
 model = torch.compile(
@@ -26,33 +86,9 @@ model = torch.compile(
 
 print(f"Compile time: {time.time() - starttime} seconds")
 
-# -------------------------------
-# 2. Warmup with a small dummy batch
-# -------------------------------
 starttime = time.time()
 dummy = torch.randn(2, 3, 224, 224, device="cuda")
-_ = model(dummy)  # triggers kernel compilation / fusion
-
+e = model.image_model(dummy).pooler_output
+model.forward(e)
 print(f"Dummy batch time: {time.time() - starttime} seconds")
 
-
-model_path = os.path.join("/scratch", "mcatchen", "precompiled_vit.pt")
-torch.save(model, model_path)
-"""
-# load that bad boy
-
-model_path = os.path.join("/scratch", "mcatchen", "precompiled_vit.pt")
-model = torch.load(model_path, weights_only=False)
-
-starttime = time.time()
-dummy = torch.randn(2, 3, 224, 224, device="cuda")
-_ = model(dummy)  # triggers kernel compilation / fusion
-print(f"Dummy batch time: {time.time() - starttime} seconds")
-
-starttime = time.time()
-for i in range(64):
-    starttime = time.time()
-    dummy = torch.randn(2, 3, 224, 224, device="cuda")
-    _ = model(dummy)  # triggers kernel compilation / fusion
-
-print(f"Multi dummy batch time: {time.time() - starttime} seconds")
