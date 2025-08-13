@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import argparse
+import json
 
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -30,6 +31,7 @@ class ResNetSpeciesEmbeddingModel(nn.Module):
     ):
         super().__init__()
         self.num_classes = num_classes
+        self.species_embedding_dim = species_embedding_dim
         self.batch_size = batch_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
@@ -251,6 +253,41 @@ def train(model, img_dir, n_epochs, learning_rate):
 
     return pd.DataFrame(stat_dicts)
 
+def get_mean_embedding(data_dir, model):
+    full_dataset = datasets.ImageFolder(
+        data_dir, 
+        transform=model.image_transform,
+    )
+    pin_mem = torch.cuda.is_available()
+
+    full_loader = DataLoader(full_dataset, batch_size=model.batch_size, shuffle=True, pin_memory=pin_mem)
+
+    embed_dict = {
+        c: torch.zeros(model.species_embedding_dim)
+        for c in full_dataset.class_to_idx.values()
+    }
+    
+    
+
+    model.eval()
+    with torch.no_grad():
+        for images, labels in full_loader:
+            images = images.to(model.device)
+            vit_outputs = model.embed_image(images)
+            
+            embeddings = model.embedding_model(vit_outputs)
+
+            for (i,l) in enumerate(labels):
+                embed_dict[l.item()] += embeddings.cpu()[i,:]
+    
+    
+    idx_to_name = {full_dataset.class_to_idx[k]:k for k in full_dataset.class_to_idx.keys()}
+
+    mean_embed_dict = {}
+    for i in range(model.num_classes):
+        mean_embed_dict[idx_to_name[i]] = embed_dict[i] / len(full_loader)
+
+    return mean_embed_dict
 
 def main(parser):
     args = parser.parse_args()
@@ -263,18 +300,34 @@ def main(parser):
     if torch.cuda.is_available():
         model = torch.compile(model)
 
-    img_dir  = os.path.join(base_path, "data", "bombus_img")    
+    dir_name = "plant_img" if args.species == "plants" else "bombus_img"
+
+    img_dir  = os.path.join(base_path, "data", dir_name)    
     print(f"Starting training on {model.device} with dir {img_dir}")
+
 
     df = train(model, img_dir, args.nepoch, args.lr)
 
+    json_path = os.path.join(base_path, "mean_embed_" + model_name + ".json")
+    
+    embed_dict = get_mean_embedding(img_dir, model)
+    
+    torch.save(embed_dict, json_path)
+    #with open(json_path, 'w') as fp:
+    #    json.dump(embed_dict, fp)
+
+
+
     csv_path = os.path.join(base_path, model_name+".csv")
     df.to_csv(csv_path, index=False)
+
+
  
 
 if __name__=='__main__':   
     parser = argparse.ArgumentParser(description='Cropping iNaturalist Images with Zero-Shot Object Detection')
     parser.add_argument('--cluster', action='store_true')
+    parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
     parser.add_argument('--model', choices=['vit', 'resnet'])
     parser.add_argument('--nepoch', default=5, type=int)
     parser.add_argument('--lr', default=5e-3, type=float)
