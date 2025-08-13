@@ -265,25 +265,24 @@ def get_mean_embedding(data_dir, model):
     embed_dict = {
         c: torch.zeros(model.species_embedding_dim)
         for c in full_dataset.class_to_idx.values()
-    }
+    }.to(model.device)
     
     
 
     model.eval()
     with torch.no_grad():
         for images, labels in full_loader:
-            images = images.to(model.device)
+            images, labels = images.to(model.device), labels.to(model.device)
             vit_outputs = model.embed_image(images)
-            
             embeddings = model.embedding_model(vit_outputs)
 
             for (i,l) in enumerate(labels):
-                embed_dict[l.item()] += embeddings.cpu()[i,:]
+                embed_dict[l.item()] += embeddings[i,:]
     
     
-    idx_to_name = {full_dataset.class_to_idx[k]:k for k in full_dataset.class_to_idx.keys()}
+    idx_to_name = {full_dataset.class_to_idx[k]:k for k in full_dataset.class_to_idx.keys()}.to(model.device)
+    mean_embed_dict = {}.to(model.device)
 
-    mean_embed_dict = {}
     for i in range(model.num_classes):
         mean_embed_dict[idx_to_name[i]] = embed_dict[i] / len(full_loader)
 
@@ -305,13 +304,12 @@ def main(parser):
     img_dir  = os.path.join(base_path, "data", dir_name)    
     print(f"Starting training on {model.device} with dir {img_dir}")
 
-
     df = train(model, img_dir, args.nepoch, args.lr)
 
     json_path = os.path.join(base_path, "mean_embed_" + model_name + ".json")
     
     embed_dict = get_mean_embedding(img_dir, model)
-    
+    embed_dict.cpu()
     torch.save(embed_dict, json_path)
     #with open(json_path, 'w') as fp:
     #    json.dump(embed_dict, fp)
