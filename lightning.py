@@ -228,9 +228,10 @@ def main():
     trainer.fit(compiled_model, species_data)
     compile_time = benchmark.median_time()
 
+    print(f"Compile median time: {compile_time:.4f} seconds")
+
     #speedup = eager_time / compile_time
     #print(f"Eager median time: {eager_time:.4f} seconds")
-    #print(f"Compile median time: {compile_time:.4f} seconds")
     #print(f"Speedup: {speedup:.1f}x")
 
 
