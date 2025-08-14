@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
 
+import torchmetrics
+
 from transformers import AutoFeatureExtractor
 from transformers import AutoModel
 
@@ -17,14 +19,6 @@ import os
 import argparse
 import pandas as pd
 import statistics
-
-
-parser = argparse.ArgumentParser(description='cifar10 classification models, pytorch-lightning parallel test')
-parser.add_argument('--lr', default=1e-3, help='')
-parser.add_argument('--max_epochs', type=int, default=5, help='')
-parser.add_argument('--batch_size', type=int, default=512, help='')
-parser.add_argument('--num_workers', type=int, default=0, help='')
-parser.add_argument('--cluster', action='store_true')
 
 torch.set_float32_matmul_precision('high')
 
@@ -69,6 +63,7 @@ class SpeciesImageDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.transform = transform
         self.num_workers = num_workers
+
     def prepare_data(self):
         pass 
     def setup(self, stage):
@@ -94,10 +89,8 @@ class SpeciesImageDataModule(pl.LightningDataModule):
         return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
 
 
-def main():
+def main(args):
     print("Starting...")
-
-    args = parser.parse_args()
 
     class ViTSpeciesEmbeddingModel(pl.LightningModule):
         def __init__(
@@ -132,6 +125,19 @@ def main():
                 nn.Linear(species_embedding_dim, num_classes) 
             )
 
+            self.train_metrics = torchmetrics.MetricCollection(
+                {
+                    "accuracy": torchmetrics.classification.Accuracy(
+                        task="multiclass", 
+                        num_classes=num_classes
+                    ),
+                    "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+                    "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+                },
+                prefix="train_",
+            )
+            self.valid_metrics = self.train_metrics.clone(prefix="valid_")
+
         def forward(self, x):
             return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
         
@@ -139,34 +145,24 @@ def main():
             x, y = batch
             y_hat = self.forward(x)
             loss = F.cross_entropy(y_hat, y)
+            batch_value = self.train_metrics(y_hat, y)
+            batch_value["train_loss"] = loss
+            self.log_dict(batch_value)
             return loss
+        
+        def validation_step(self, batch, batch_idx):
+            x, y = batch
+            y_hat = self.forward(x)
+            val_loss = F.cross_entropy(y_hat, y)
+            batch_value = self.val_metrics(y_hat, y)
+            batch_value["valid_loss"] = val_loss
+            self.log_dict(batch_value)
+
+        def on_train_epoch_end(self):
+            self.train_metrics.reset()
 
         def configure_optimizers(self):
             return torch.optim.Adam(self.parameters(), lr=args.lr)
-
-    class Benchmark(pl.Callback):
-        """A callback that measures the median execution time between the start and end of a batch."""
-        def __init__(self):
-            self.start = torch.cuda.Event(enable_timing=True)
-            self.end = torch.cuda.Event(enable_timing=True)
-            self.times = []
-
-        def median_time(self):
-            return statistics.median(self.times)
-
-        def on_train_batch_start(self, trainer, *args, **kwargs):
-            self.start.record()
-
-        def on_train_batch_end(self, trainer, *args, **kwargs):
-            # Exclude the first iteration to let the model warm up
-            if trainer.global_step > 1:
-                self.end.record()
-                torch.cuda.synchronize()
-                self.times.append(self.start.elapsed_time(self.end) / 1000)
-
-   
-
-
     
     feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
     transform = transforms.Compose([
@@ -179,8 +175,10 @@ def main():
 
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else "./"
 
+    datadir = "bombus_img" if args.species == "bees" else "plant_img" 
+
     species_data = SpeciesImageDataModule(
-        data_dir = os.path.join(base_path, "data", "bombus_img"),
+        data_dir = os.path.join(base_path, "data", datadir),
         batch_size = args.batch_size,
         transform=transform,
         num_workers= args.num_workers,
@@ -190,37 +188,33 @@ def main():
     compiled_model = torch.compile(model, mode="reduce-overhead")
 
   
-    """ 
-        Here we initialize a Trainer() explicitly with 1 node and 2 GPUs per node.
-        
-        To make this script more generic, you can use torch.cuda.device_count() to set the number of GPUs
-        and you can use int(os.environ.get("SLURM_JOB_NUM_NODES")) to set the number of nodes. 
-        We also set progress_bar_refresh_rate=0 to avoid writing a progress bar to the logs, 
-        which can cause issues due to updating logs too frequently.
-    """
     num_gpus = torch.cuda.device_count()
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
     strategy = 'ddp'
 
-    logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="test_lightning")
+    logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="test_lightning_" + args.species)
 
     # Measure the median iteration time with compiled model
-    benchmark = Benchmark()
     trainer = pl.Trainer(
         accelerator="gpu", 
         devices=num_gpus, 
         num_nodes=num_nodes, 
         strategy=strategy, 
         max_epochs = args.max_epochs, 
+        profiler="simple",
         enable_progress_bar=False,
         logger = logger,
-        callbacks=[benchmark]
     ) 
     trainer.fit(compiled_model, species_data)
-    compile_time = benchmark.median_time()
-
-    print(f"Compile median time: {compile_time:.4f} seconds")
 
 
 if __name__=='__main__':
-   main()
+    parser = argparse.ArgumentParser(description='cifar10 classification models, pytorch-lightning parallel test')
+    parser.add_argument('--lr', default=1e-3, help='')
+    parser.add_argument('--max_epochs', type=int, default=5, help='')
+    parser.add_argument('--batch_size', type=int, default=512, help='')
+    parser.add_argument('--num_workers', type=int, default=0, help='')
+    parser.add_argument('--cluster', action='store_true')
+    parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
+    args = parser.parse_args()
+    main()
