@@ -106,7 +106,8 @@ def main(args):
     )
     valid_metrics = train_metrics.clone(prefix="valid_")
 
-
+    train_metrics.to('cuda')
+    valid_metrics.to('cuda')
     class ViTSpeciesEmbeddingModel(pl.LightningModule):
         def __init__(
             self, 
