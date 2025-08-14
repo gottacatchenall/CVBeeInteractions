@@ -191,7 +191,7 @@ def main():
     model = ViTSpeciesEmbeddingModel()
     compiled_model = torch.compile(model, mode="reduce-overhead")
 
-    warmup_batch = torch.rand((1,3,244,244), device='cuda')
+    warmup_batch = torch.rand((1,3,224,224), device='cuda')
     # _ = model(warmup_batch)
     _ = compiled_model(warmup_batch)
 
