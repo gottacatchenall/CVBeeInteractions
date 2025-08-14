@@ -206,6 +206,7 @@ def main(args):
         profiler="simple",
         enable_progress_bar=False,
         logger = logger,
+        log_every_n_steps=1,
     ) 
     trainer.fit(compiled_model, species_data)
 
