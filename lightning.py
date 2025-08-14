@@ -114,6 +114,15 @@ def main():
                 local_files_only=True
             )
             self.image_model.eval()
+
+            # --- Freeze ViT layers  ---
+            for param in self.image_model.embeddings.parameters():
+                param.requires_grad = False
+            for param in self.image_model.encoder.parameters():
+                param.requires_grad = False
+            for param in self.image_model.pooler.parameters():
+                param.requires_grad = True
+            
             self.embedding_model = nn.Linear(
                 768, 
                 species_embedding_dim
@@ -156,43 +165,16 @@ def main():
                 torch.cuda.synchronize()
                 self.times.append(self.start.elapsed_time(self.end) / 1000)
 
-    """ 
-        Here we initialize a Trainer() explicitly with 1 node and 2 GPUs per node.
-        
-        To make this script more generic, you can use torch.cuda.device_count() to set the number of GPUs
-        and you can use int(os.environ.get("SLURM_JOB_NUM_NODES")) to set the number of nodes. 
-        We also set progress_bar_refresh_rate=0 to avoid writing a progress bar to the logs, 
-        which can cause issues due to updating logs too frequently.
-    """
-    if args.cluster:
-        num_gpus = torch.cuda.device_count()
-        num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
-        strategy = 'ddp'
-    else: 
-        num_gpus = 1
-        num_nodes = 1
-        strategy = 'auto'
+   
 
-    logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="my_exp_name")
+    #logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="my_exp_name")
 
     
-
-    trainer = pl.Trainer(
-        accelerator="gpu", 
-        devices=num_gpus, 
-        num_nodes=num_nodes, 
-        strategy=strategy, 
-        profiler = "simple",
-        max_epochs = args.max_epochs, 
-        enable_progress_bar=False,
-        logger = logger
-    ) 
-
     feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
+        transforms.v2.Resize((224, 224)),
+        transforms.v2.ToTensor(),
+        transforms.v2.Normalize(
             mean=feature_extractor.image_mean, 
             std=feature_extractor.image_std),
     ])
@@ -209,7 +191,12 @@ def main():
     model = ViTSpeciesEmbeddingModel()
     compiled_model = torch.compile(model, mode="reduce-overhead")
 
+    warmup_batch = torch.rand((1,3,244,244), device='cuda')
+    # _ = model(warmup_batch)
+    _ = compiled_model(warmup_batch)
+
     # Measure the median iteration time with uncompiled model
+    """
     benchmark = Benchmark()
     trainer = pl.Trainer(
         accelerator="gpu", 
@@ -225,7 +212,24 @@ def main():
     ) 
     trainer.fit(model, species_data)
     eager_time = benchmark.median_time()
+    """
 
+    """ 
+        Here we initialize a Trainer() explicitly with 1 node and 2 GPUs per node.
+        
+        To make this script more generic, you can use torch.cuda.device_count() to set the number of GPUs
+        and you can use int(os.environ.get("SLURM_JOB_NUM_NODES")) to set the number of nodes. 
+        We also set progress_bar_refresh_rate=0 to avoid writing a progress bar to the logs, 
+        which can cause issues due to updating logs too frequently.
+    """
+    if args.cluster:
+        num_gpus = torch.cuda.device_count()
+        num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
+        strategy = 'ddp'
+    else: 
+        num_gpus = 1
+        num_nodes = 1
+        strategy = 'auto'
     # Measure the median iteration time with compiled model
     benchmark = Benchmark()
     trainer = pl.Trainer(
@@ -243,11 +247,10 @@ def main():
     trainer.fit(compiled_model, species_data)
     compile_time = benchmark.median_time()
 
-
-    speedup = eager_time / compile_time
-    print(f"Eager median time: {eager_time:.4f} seconds")
+    #speedup = eager_time / compile_time
+    #print(f"Eager median time: {eager_time:.4f} seconds")
     print(f"Compile median time: {compile_time:.4f} seconds")
-    print(f"Speedup: {speedup:.1f}x")
+    #print(f"Speedup: {speedup:.1f}x")
 
 
 if __name__=='__main__':
