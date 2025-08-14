@@ -217,4 +217,4 @@ if __name__=='__main__':
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
     args = parser.parse_args()
-    main()
+    main(args)
