@@ -92,15 +92,15 @@ class SpeciesImageDataModule(pl.LightningDataModule):
 def main(args):
     print("Starting...")
 
-
+    
     train_metrics = torchmetrics.MetricCollection(
         {
             "accuracy": torchmetrics.classification.Accuracy(
                 task="multiclass", 
-                num_classes=num_classes
+                num_classes=19
             ),
-            "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
-            "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+            "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
+            "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
         },
         prefix="train_",
     )
