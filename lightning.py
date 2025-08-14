@@ -26,6 +26,7 @@ parser.add_argument('--batch_size', type=int, default=512, help='')
 parser.add_argument('--num_workers', type=int, default=0, help='')
 parser.add_argument('--cluster', action='store_true')
 
+torch.set_float32_matmul_precision('high')
 
 class SpeciesImageDataset(Dataset):
     def __init__(
@@ -191,9 +192,9 @@ def main():
     model = ViTSpeciesEmbeddingModel()
     compiled_model = torch.compile(model, mode="reduce-overhead")
 
-    warmup_batch = torch.rand((1,3,224,224), device='cuda')
+    #warmup_batch = torch.rand((1,3,224,224), device='cuda')
     # _ = model(warmup_batch)
-    _ = compiled_model(warmup_batch)
+    #_ = compiled_model(warmup_batch)
 
     # Measure the median iteration time with uncompiled model
     """
