@@ -2,9 +2,11 @@
 #SBATCH --nodes 1             
 #SBATCH --gres=gpu:2          # Request 2 GPU "generic resources”.
 #SBATCH --tasks-per-node=2    # Request 1 process per GPU. You will get 1 CPU per process by default. Request more CPUs with the "cpus-per-task" parameter to enable multiple data-loader workers to load data in parallel.
+#SBATCH --cpus-per-task=2  
 #SBATCH --mem=8G      
 #SBATCH --time=01:00:00
 #SBATCH --output=%N-%j.out
+#SBATCH --job-name=LightningTest
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
@@ -18,4 +20,4 @@ export TORCH_NCCL_ASYNC_HANDLING=1
 # If it is, it expects the user to have requested one task per GPU.
 # If you do not ask for 1 task per GPU, and you do not run your script with "srun", your job will fail!
 
-srun python lightning.py  --batch_size 256 --max_epochs 2 --cluster
+srun python lightning.py  --batch_size 256 --max_epochs 2 --cluster --num_workers=2
