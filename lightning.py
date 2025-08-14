@@ -172,9 +172,9 @@ def main():
     
     feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
     transform = transforms.Compose([
-        transforms.v2.Resize((224, 224)),
-        transforms.v2.ToTensor(),
-        transforms.v2.Normalize(
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
             mean=feature_extractor.image_mean, 
             std=feature_extractor.image_std),
     ])
