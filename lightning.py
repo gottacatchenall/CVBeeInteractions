@@ -154,7 +154,7 @@ def main(args):
             x, y = batch
             y_hat = self.forward(x)
             val_loss = F.cross_entropy(y_hat, y)
-            batch_value = self.val_metrics(y_hat, y)
+            batch_value = self.valid_metrics(y_hat, y)
             batch_value["valid_loss"] = val_loss
             self.log_dict(batch_value)
 
