@@ -92,6 +92,21 @@ class SpeciesImageDataModule(pl.LightningDataModule):
 def main(args):
     print("Starting...")
 
+
+    train_metrics = torchmetrics.MetricCollection(
+        {
+            "accuracy": torchmetrics.classification.Accuracy(
+                task="multiclass", 
+                num_classes=num_classes
+            ),
+            "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+            "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+        },
+        prefix="train_",
+    )
+    valid_metrics = train_metrics.clone(prefix="valid_")
+
+
     class ViTSpeciesEmbeddingModel(pl.LightningModule):
         def __init__(
             self, 
@@ -125,19 +140,6 @@ def main(args):
                 nn.Linear(species_embedding_dim, num_classes) 
             )
 
-            self.train_metrics = torchmetrics.MetricCollection(
-                {
-                    "accuracy": torchmetrics.classification.Accuracy(
-                        task="multiclass", 
-                        num_classes=num_classes
-                    ),
-                    "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
-                    "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
-                },
-                prefix="train_",
-            )
-            self.valid_metrics = self.train_metrics.clone(prefix="valid_")
-
         def forward(self, x):
             return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
         
@@ -145,8 +147,8 @@ def main(args):
             x, y = batch
             y_hat = self.forward(x)
             loss = F.cross_entropy(y_hat, y)
-            batch_value = self.train_metrics(y_hat, y)
-            batch_value["train_loss"] = loss
+            batch_value = train_metrics(y_hat, y)
+            #batch_value["train_loss"] = loss
             self.log_dict(batch_value)
             return loss
         
@@ -154,12 +156,12 @@ def main(args):
             x, y = batch
             y_hat = self.forward(x)
             val_loss = F.cross_entropy(y_hat, y)
-            batch_value = self.valid_metrics(y_hat, y)
-            batch_value["valid_loss"] = val_loss
+            batch_value = valid_metrics(y_hat, y)
+            #batch_value["valid_loss"] = val_loss
             self.log_dict(batch_value)
 
         def on_train_epoch_end(self):
-            self.train_metrics.reset()
+            train_metrics.reset()
 
         def configure_optimizers(self):
             return torch.optim.Adam(self.parameters(), lr=args.lr)
