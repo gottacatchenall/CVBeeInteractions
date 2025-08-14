@@ -93,21 +93,8 @@ def main(args):
     print("Starting...")
 
     
-    train_metrics = torchmetrics.MetricCollection(
-        {
-            "accuracy": torchmetrics.classification.Accuracy(
-                task="multiclass", 
-                num_classes=19
-            ),
-            "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
-            "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
-        },
-        prefix="train_",
-    )
-    valid_metrics = train_metrics.clone(prefix="valid_")
+    
 
-    train_metrics.to('cuda')
-    valid_metrics.to('cuda')
     class ViTSpeciesEmbeddingModel(pl.LightningModule):
         def __init__(
             self, 
@@ -141,6 +128,19 @@ def main(args):
                 nn.Linear(species_embedding_dim, num_classes) 
             )
 
+            self.train_metrics = torchmetrics.MetricCollection(
+                {
+                    "accuracy": torchmetrics.classification.Accuracy(
+                        task="multiclass", 
+                        num_classes=19
+                    ),
+                    "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
+                    "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='micro'),
+                },
+                prefix="train_",
+            )
+            self.valid_metrics = self.train_metrics.clone(prefix="valid_")
+
         def forward(self, x):
             return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
         
@@ -148,21 +148,20 @@ def main(args):
             x, y = batch
             y_hat = self.forward(x)
             loss = F.cross_entropy(y_hat, y)
-            batch_value = train_metrics(y_hat, y)
-            #batch_value["train_loss"] = loss
+            batch_value = self.train_metrics(y_hat, y)
             self.log_dict(batch_value)
             return loss
         
         def validation_step(self, batch, batch_idx):
             x, y = batch
             y_hat = self.forward(x)
-            val_loss = F.cross_entropy(y_hat, y)
-            batch_value = valid_metrics(y_hat, y)
+            batch_value = self.valid_metrics(y_hat, y)
+            #val_loss = F.cross_entropy(y_hat, y)
             #batch_value["valid_loss"] = val_loss
             self.log_dict(batch_value)
 
         def on_train_epoch_end(self):
-            train_metrics.reset()
+            self.train_metrics.reset()
 
         def configure_optimizers(self):
             return torch.optim.Adam(self.parameters(), lr=args.lr)
@@ -188,7 +187,7 @@ def main(args):
     )
 
     model = ViTSpeciesEmbeddingModel()
-    compiled_model = torch.compile(model, mode="reduce-overhead")
+    compiled_model = torch.compile(model)
 
   
     num_gpus = torch.cuda.device_count()
