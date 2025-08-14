@@ -135,11 +135,11 @@ class ViTSpeciesEmbeddingModel(pl.LightningModule):
         self.valid_metrics = self.train_metrics.clone(prefix="valid_")
 
     def forward(self, x):
-        return self.classification_head(self.embedding_model(self.image_model(x, output_hidden_states=False, output_attentions=False).pooler_output))
+        return self.classification_head(self.embedding_model(self.image_model(x).pooler_output))
     
     def training_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self.forward(x)
+        y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
 
         with torch.no_grad():
@@ -149,7 +149,7 @@ class ViTSpeciesEmbeddingModel(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self.forward(x)
+        y_hat = self(x)
         with torch.no_grad():
             batch_value = self.valid_metrics(y_hat, y)
             self.log_dict(batch_value)
@@ -187,7 +187,7 @@ def main(args):
     )
 
     model = ViTSpeciesEmbeddingModel()
-    compiled_model = torch.compile(model, mode="reduce-overhead")
+    compiled_model = torch.compile(model, mode="reduce-overhead", fullgraph=True)
 
   
     num_gpus = torch.cuda.device_count()

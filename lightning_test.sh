@@ -20,5 +20,7 @@ export TORCH_NCCL_ASYNC_HANDLING=1
 # If it is, it expects the user to have requested one task per GPU.
 # If you do not ask for 1 task per GPU, and you do not run your script with "srun", your job will fail!
 
+export TORCH_LOGS="graph_breaks,recompiles"
+
 srun python lightning.py  --batch_size 512 --cluster --num_workers=1  --max_epochs 15 --species bees
 
