@@ -138,8 +138,7 @@ def main():
         
         def training_step(self, batch, batch_idx):
             x, y = batch
-            y_hat = self(x)
-            l =  self.loss_function(y_hat, y)
+            l =  self.loss_function(self.forward(x), y)
             self.log_dict({"train_loss": l, "batch_idx": batch_idx}, prog_bar=False)
             return l
 
