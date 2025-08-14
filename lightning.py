@@ -135,9 +135,7 @@ class ViTSpeciesEmbeddingModel(pl.LightningModule):
         self.valid_metrics = self.train_metrics.clone(prefix="valid_")
 
     def forward(self, x):
-        outputs = self.image_model(x, output_hidden_states=False, output_attentions=False)
-        pooled = outputs.pooler_output
-        return self.classification_head(self.embedding_model(pooled))
+        return self.classification_head(self.embedding_model(self.image_model(x, output_hidden_states=False, output_attentions=False).pooler_output))
     
     def training_step(self, batch, batch_idx):
         x, y = batch
