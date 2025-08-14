@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=2    # Request 1 process per GPU. You will get 1 CPU per process by default. Request more CPUs with the "cpus-per-task" parameter to enable multiple data-loader workers to load data in parallel.
 #SBATCH --cpus-per-task=2  
 #SBATCH --mem=8G      
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=%N-%j.out
 #SBATCH --job-name=LightningTest
 
