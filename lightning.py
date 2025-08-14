@@ -21,7 +21,7 @@ import statistics
 
 parser = argparse.ArgumentParser(description='cifar10 classification models, pytorch-lightning parallel test')
 parser.add_argument('--lr', default=1e-3, help='')
-parser.add_argument('--max_epochs', type=int, default=4, help='')
+parser.add_argument('--max_epochs', type=int, default=5, help='')
 parser.add_argument('--batch_size', type=int, default=512, help='')
 parser.add_argument('--num_workers', type=int, default=0, help='')
 parser.add_argument('--cluster', action='store_true')
@@ -168,7 +168,6 @@ def main():
 
    
 
-    #logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="my_exp_name")
 
     
     feature_extractor = AutoFeatureExtractor.from_pretrained("google/vit-base-patch16-224", local_files_only=True, use_fast=True)
@@ -192,29 +191,7 @@ def main():
     model = ViTSpeciesEmbeddingModel()
     compiled_model = torch.compile(model, mode="reduce-overhead")
 
-    #warmup_batch = torch.rand((1,3,224,224), device='cuda')
-    # _ = model(warmup_batch)
-    #_ = compiled_model(warmup_batch)
-
-    # Measure the median iteration time with uncompiled model
-    """
-    benchmark = Benchmark()
-    trainer = pl.Trainer(
-        accelerator="gpu", 
-        devices=num_gpus, 
-        num_nodes=num_nodes, 
-        strategy=strategy,
-        #profiler = "simple",
-        max_steps=10,
-        #max_epochs = args.max_epochs, 
-        enable_progress_bar=False,
-        #logger = logger
-        callbacks=[benchmark]
-    ) 
-    trainer.fit(model, species_data)
-    eager_time = benchmark.median_time()
-    """
-
+  
     """ 
         Here we initialize a Trainer() explicitly with 1 node and 2 GPUs per node.
         
@@ -231,6 +208,9 @@ def main():
         num_gpus = 1
         num_nodes = 1
         strategy = 'auto'
+
+    logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="test_lightning")
+
     # Measure the median iteration time with compiled model
     benchmark = Benchmark()
     trainer = pl.Trainer(
@@ -239,10 +219,10 @@ def main():
         num_nodes=num_nodes, 
         strategy=strategy, 
         #profiler = "simple",
-        max_steps=10,
-        #max_epochs = args.max_epochs, 
+        #max_steps=10,
+        max_epochs = args.max_epochs, 
         enable_progress_bar=False,
-        #logger = logger
+        logger = logger
         callbacks=[benchmark]
     ) 
     trainer.fit(compiled_model, species_data)
@@ -250,7 +230,7 @@ def main():
 
     #speedup = eager_time / compile_time
     #print(f"Eager median time: {eager_time:.4f} seconds")
-    print(f"Compile median time: {compile_time:.4f} seconds")
+    #print(f"Compile median time: {compile_time:.4f} seconds")
     #print(f"Speedup: {speedup:.1f}x")
 
 
