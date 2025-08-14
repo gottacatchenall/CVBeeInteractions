@@ -138,9 +138,10 @@ def main():
         
         def training_step(self, batch, batch_idx):
             x, y = batch
-            l =  self.loss_function(self.forward(x), y)
-            self.log_dict({"train_loss": l, "batch_idx": batch_idx}, prog_bar=False)
-            return l
+            y_hat = self.forward(x)
+            #l =  self.loss_function(, y)
+            loss = F.cross_entropy(y_hat, y)
+            return loss
 
         def configure_optimizers(self):
             return torch.optim.Adam(self.parameters(), lr=args.lr)
