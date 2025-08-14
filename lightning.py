@@ -114,7 +114,6 @@ def main():
                 "google/vit-base-patch16-224", 
                 local_files_only=True
             )
-            self.image_model.eval()
 
             # --- Freeze ViT layers  ---
             for param in self.image_model.embeddings.parameters():
@@ -139,7 +138,6 @@ def main():
         def training_step(self, batch, batch_idx):
             x, y = batch
             y_hat = self.forward(x)
-            #l =  self.loss_function(, y)
             loss = F.cross_entropy(y_hat, y)
             return loss
 
@@ -200,14 +198,9 @@ def main():
         We also set progress_bar_refresh_rate=0 to avoid writing a progress bar to the logs, 
         which can cause issues due to updating logs too frequently.
     """
-    if args.cluster:
-        num_gpus = torch.cuda.device_count()
-        num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
-        strategy = 'ddp'
-    else: 
-        num_gpus = 1
-        num_nodes = 1
-        strategy = 'auto'
+    num_gpus = torch.cuda.device_count()
+    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
+    strategy = 'ddp'
 
     logger = pl.loggers.CSVLogger(os.path.join("/scratch", "mcatchen", "lightning_logs"), name="test_lightning")
 
@@ -218,21 +211,15 @@ def main():
         devices=num_gpus, 
         num_nodes=num_nodes, 
         strategy=strategy, 
-        #profiler = "simple",
-        #max_steps=10,
         max_epochs = args.max_epochs, 
         enable_progress_bar=False,
-        logger = logger
+        logger = logger,
         callbacks=[benchmark]
     ) 
     trainer.fit(compiled_model, species_data)
     compile_time = benchmark.median_time()
 
     print(f"Compile median time: {compile_time:.4f} seconds")
-
-    #speedup = eager_time / compile_time
-    #print(f"Eager median time: {eager_time:.4f} seconds")
-    #print(f"Speedup: {speedup:.1f}x")
 
 
 if __name__=='__main__':
