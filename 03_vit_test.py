@@ -9,6 +9,9 @@ import pytorch_lightning as pl
 from src.model import VitClassifier
 from src.dataset import TorchSavedDataset, SpeciesImageDataModule
 
+torch.set_float32_matmul_precision('high')
+
+
 # -------------------
 # Main
 # -------------------
@@ -42,7 +45,7 @@ def main(image_dir, args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr', type=float, default=0.1)
+    parser.add_argument('--lr', type=float, default=3e-4)
     parser.add_argument('--max_epochs', type=int, default=4)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
