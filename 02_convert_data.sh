@@ -1,14 +1,11 @@
 #!/bin/bash
-#SBATCH --time=00:10:00
 #SBATCH --account=def-tpoisot
-#SBATCH --nodes 1
-#SBATCH --gres=gpu:1 # request a GPU
-#SBATCH --tasks-per-node=1 
-#SBATCH --cpus-per-task=1 
-#SBATCH --mem=16G
-#SBATCH --job-name=resnet-simpler
+#SBATCH --nodes 1             
+#SBATCH --cpus-per-task=1  
+#SBATCH --mem=16G      
+#SBATCH --time=01:30:00
 #SBATCH --output=%x-%j.out
-
+#SBATCH --job-name=ConvertDataToBinary
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
@@ -16,4 +13,4 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install --no-index -r requirements.txt
 
-python resnet_simpler.py --cluster 
+python 02_convert_to_to_tensor.py --cluster --species bees

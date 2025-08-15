@@ -14,4 +14,4 @@ pip install --no-index --upgrade pip
 
 pip install --no-index -r requirements.txt
 
-python crop_tests.py --cluster
+python 01_crop_images.py --cluster
