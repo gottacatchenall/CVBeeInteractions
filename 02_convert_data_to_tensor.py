@@ -49,14 +49,19 @@ def convert_to_binary_dataset(
     print(f"Found {len(dataset)} images in {dataset_path}")
     print(f"Number of classes: {len(dataset.classes)}")
 
+
+    idx = 50
+    pt = 1
+
     # 3. Process and Concatenate Tensors
     all_images = []
     all_labels = []
 
     for i, (images, labels) in enumerate(data_loader):
-        print(f"Batch {i} of {len(data_loader)}")
-        all_images.append(images)
-        all_labels.append(labels)
+        if i < idx:
+            print(f"Batch {i} of {len(data_loader)}")
+            all_images.append(images)
+            all_labels.append(labels)
 
 
     # Concatenate all batches into single, large tensors
@@ -75,7 +80,7 @@ def convert_to_binary_dataset(
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    output_file_path = os.path.join(output_dir, 'dataset.pt')
+    output_file_path = os.path.join(output_dir, f'dataset_{pt}.pt')
     
     # Store data and labels in a dictionary for easy access
     dataset_dict = {
