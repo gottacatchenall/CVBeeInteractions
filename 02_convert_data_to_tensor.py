@@ -8,7 +8,13 @@ from torch.utils.data import Dataset
 import os
 import argparse
 
-def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
+def convert_to_binary_dataset(
+    dataset_path, 
+    output_dir, 
+    img_size=(32, 32),
+    test_size = 0.2,
+    random_seed=42, 
+):
     """
     Converts an image dataset to a binary format optimized for GPU loading.
 
@@ -52,6 +58,15 @@ def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
     final_images = torch.cat(all_images, dim=0)
     final_labels = torch.cat(all_labels, dim=0)
     
+    # Train/test split
+    torch.manual_seed(random_seed)
+    indices = torch.randperm(len(dataset))
+    
+    # Determine the split point
+    split_point = int(len(dataset) * (1 - test_size))
+    train_indices = indices[:split_point]
+    test_indices = indices[split_point:]
+
     # 4. Save the Tensors using torch.save
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -63,6 +78,8 @@ def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
         'data': final_images,
         'labels': final_labels,
         'classes': dataset.classes,
+        'train_indices': train_indices,
+        'test_indices': test_indices
     }
     print(f"Starting saving data")
     torch.save(dataset_dict, output_file_path)
@@ -71,38 +88,6 @@ def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
     print(f"Data tensor shape: {final_images.shape}")
     print(f"Labels tensor shape: {final_labels.shape}")
 
-"""
-class TorchSavedDataset(Dataset):
-    def __init__(self, file_path):
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Dataset file not found: {file_path}")
-        print(f"Loading dataset from: {file_path}")
-        
-        # Load the entire dataset dictionary
-        dataset_dict = torch.load(file_path)
-        
-        # Ensure the necessary keys are present
-        if 'data' not in dataset_dict or 'labels' not in dataset_dict:
-            raise ValueError("The .pt file must contain 'data' and 'labels' keys.")
-
-        self.data = dataset_dict['data']
-        self.labels = dataset_dict['labels']
-        self.classes = dataset_dict['classes']
-
-        # Ensure data and labels have the same number of samples
-        if self.data.shape[0] != self.labels.shape[0]:
-            raise ValueError("Number of samples in data and labels do not match.")
-        self.num_samples = self.data.shape[0]
-        print(f"Successfully loaded {self.num_samples} samples.")
-       
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        image = self.data[idx]
-        label = self.labels[idx]
-        return image, label
-"""
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Convert data to Tensor')
