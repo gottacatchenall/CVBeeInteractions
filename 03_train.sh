@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes 1             
-#SBATCH --gres=gpu:2         
+#SBATCH --gres=gpu:1     
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1  
 #SBATCH --mem=16G      
@@ -16,5 +16,5 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python lightning.py --batch_size 512 --cluster --num_workers=1  --max_epochs 5 --species bees
+srun python 03_vit_test.py --batch_size 512 --cluster --num_workers=1  --max_epochs 5 --species bees
 
