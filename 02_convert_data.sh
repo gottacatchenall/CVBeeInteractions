@@ -17,4 +17,4 @@ python 02_convert_to_to_tensor.py --cluster --species bees
 
 echo "Bees done."
 
-python 02_convert_to_to_tensor.py --cluster --species plants
+python 02_convert_data_to_tensor.py --cluster --species plants
