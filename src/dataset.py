@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 # Dataset Module
 # -------------------
 class TorchSavedDataset(Dataset):
-    def __init__(self, file_path, train=True):
+    def __init__(self, file_path, train=True, transform=None):
         if "dataset.pt" not in file_path:
             file_path = os.path.join(file_path, "dataset.pt")
         if not os.path.exists(file_path):
