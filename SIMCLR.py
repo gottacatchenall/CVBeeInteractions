@@ -91,7 +91,7 @@ class SimCLRDataModule(pl.LightningDataModule):
 # SimCLR Lightning Module
 # -------------------
 class SimCLR(pl.LightningModule):
-    def __init__(self, lr=1e-3, temperature=0.07):
+    def __init__(self, lr=1e-3, temperature=0.5):
         super().__init__()
         self.lr = lr
         self.temperature = temperature
@@ -105,14 +105,13 @@ class SimCLR(pl.LightningModule):
         # 2. Embedding Layer: New addition for 256-dim embedding
         self.embedding_layer = nn.Sequential(
             nn.Linear(768, 256),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Linear(256, 128),
         )
 
         # 3. Projection Head: Now starts with 256 input
         self.projection_head = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64)
+            nn.Linear(128, 128),
         )
         
     def forward(self, x):
@@ -202,7 +201,7 @@ def main(image_dir, args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr', type=float, default=5e-5)
+    parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
