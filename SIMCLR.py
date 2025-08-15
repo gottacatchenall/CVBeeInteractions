@@ -123,20 +123,37 @@ class SimCLR(pl.LightningModule):
         return z
 
     def info_nce_loss(self, z1, z2):
-        # ... (loss function remains the same as before)
+        N, D = z1.shape
+        # 1. Normalize so cosine similarity = dot product ---------------------------------
         z1 = F.normalize(z1, dim=1)
         z2 = F.normalize(z2, dim=1)
-        features = torch.cat([z1, z2], dim=0)
-        similarity_matrix = F.cosine_similarity(features.unsqueeze(1), features.unsqueeze(0), dim=2)
-        positive_pairs = torch.eye(features.shape[0], dtype=torch.bool, device=self.device)
-        positive_pairs = positive_pairs.roll(shifts=features.shape[0] // 2, dims=1)
-        diag_mask = ~torch.eye(features.shape[0], dtype=torch.bool, device=self.device)
-        similarity_matrix = similarity_matrix[diag_mask].view(features.shape[0], -1)
-        positive_sims = similarity_matrix[positive_pairs].view(features.shape[0], -1)
-        numerator = torch.exp(positive_sims / self.temperature)
-        denominator = torch.sum(torch.exp(similarity_matrix / self.temperature), dim=1)
-        loss = -torch.log(numerator / denominator).mean()
+
+        # 2. Concat views 
+        features = torch.cat([z1, z2], dim=0) 
+
+        #3. Pairwise similarities  
+        sim = features @ features.T  # [2N, 2N]
+
+        # 4. Temperature scaling
+        logits = sim / self.temperature  # [2N, 2N]
+
+        # 5. Compute positives
+        device = features.device
+        idx = torch.arange(2 * N, device=device)
+        pos_idx = (idx + N) % (2 * N)
+        pos_logits = logits[idx, pos_idx]
+
+        # 6. Exclude self-similarities 
+        logits = logits.clone()
+        logits.fill_diagonal_(float("-inf"))
+
+        # 7. Log-softmax 
+        log_den = torch.logsumexp(logits, dim=1)    
+
+        # 8. InfoNCE loss = -mean(log p(pos | i))
+        loss = -(pos_logits - log_den).mean()
         return loss
+
 
     def training_step(self, batch, batch_idx):
         (x1, x2), _ = batch
