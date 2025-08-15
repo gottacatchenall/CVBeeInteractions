@@ -5,11 +5,8 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 
-import numpy as np
-import pandas as pd
 import os
 import argparse
-import struct
 
 def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
     """
@@ -46,7 +43,8 @@ def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
     all_images = []
     all_labels = []
 
-    for images, labels in data_loader:
+    for i, (images, labels) in enumerate(data_loader):
+        print(f"Batch {i} of {len(data_loader)}")
         all_images.append(images)
         all_labels.append(labels)
         
@@ -66,14 +64,14 @@ def convert_to_binary_dataset(dataset_path, output_dir, img_size=(32, 32)):
         'labels': final_labels,
         'classes': dataset.classes,
     }
-    
+    print(f"Starting saving data")
     torch.save(dataset_dict, output_file_path)
 
     print(f"Dataset converted successfully! Tensors saved to: {output_file_path}")
     print(f"Data tensor shape: {final_images.shape}")
     print(f"Labels tensor shape: {final_labels.shape}")
 
-
+"""
 class TorchSavedDataset(Dataset):
     def __init__(self, file_path):
         if not os.path.exists(file_path):
@@ -104,10 +102,10 @@ class TorchSavedDataset(Dataset):
         image = self.data[idx]
         label = self.labels[idx]
         return image, label
+"""
 
-# --- 6. How to Use the Script ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Species image classification with ViT')
+    parser = argparse.ArgumentParser(description='Convert data to Tensor')
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
     args = parser.parse_args()

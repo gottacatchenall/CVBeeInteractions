@@ -3,7 +3,7 @@
 #SBATCH --nodes 1             
 #SBATCH --cpus-per-task=1  
 #SBATCH --mem=16G      
-#SBATCH --time=01:30:00
+#SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --job-name=ConvertDataToBinary
 
@@ -14,3 +14,7 @@ pip install --no-index --upgrade pip
 pip install --no-index -r requirements.txt
 
 python 02_convert_to_to_tensor.py --cluster --species bees
+
+echo "Bees done."
+
+python 02_convert_to_to_tensor.py --cluster --species plants
