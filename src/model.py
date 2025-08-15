@@ -10,7 +10,7 @@ import torchmetrics
 # Lightning Module
 # -------------------
 class VitClassifier(pl.LightningModule):
-    def __init__(self, lr = 1e-3):
+    def __init__(self, lr = 1e-3, num_classes=19):
         super().__init__()
         self.lr = lr
         self.image_model = AutoModel.from_pretrained(
@@ -26,21 +26,26 @@ class VitClassifier(pl.LightningModule):
             param.requires_grad = True
         
         self.embedding_model = nn.Sequential(
-            nn.Linear(768, 64)
+            nn.Linear(768, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
         )
         self.classification_head = nn.Sequential(
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 19)
+            nn.Linear(64, num_classes)
         )
 
         self.train_metrics = torchmetrics.MetricCollection(
             {
                 "accuracy": torchmetrics.classification.Accuracy(
                     task="multiclass", 
-                    num_classes=19
+                    num_classes=num_classes
                 ),
-                "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
-                "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='micro'),
+                "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+                "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='micro'),
             },
             prefix="train_",
         )
