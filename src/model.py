@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 import pytorch_lightning as pl
+import torchmetrics
 
 # -------------------
 # Lightning Module
@@ -31,6 +32,20 @@ class VitClassifier(pl.LightningModule):
             nn.ReLU(),
             nn.Linear(64, 19)
         )
+
+        self.train_metrics = torchmetrics.MetricCollection(
+            {
+                "accuracy": torchmetrics.classification.Accuracy(
+                    task="multiclass", 
+                    num_classes=19
+                ),
+                "MAP_macro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='macro'),
+                "MAP_micro": torchmetrics.classification.MulticlassPrecision(num_classes=19, average='micro'),
+            },
+            prefix="train_",
+        )
+        self.valid_metrics = self.train_metrics.clone(prefix="valid_")
+
     def forward(self, x):
         x = self.image_model(x).pooler_output
         x = self.embedding_model(x)
@@ -41,9 +56,20 @@ class VitClassifier(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=False)
+        with torch.no_grad():
+            batch_value = self.train_metrics(y_hat, y)
+            self.log_dict(batch_value)
         return loss
-
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        with torch.no_grad():
+            batch_value = self.valid_metrics(y_hat, y)
+            val_loss = F.cross_entropy(y_hat, y)
+            batch_value["valid_loss"] = val_loss
+            self.log_dict(batch_value)
+            
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 

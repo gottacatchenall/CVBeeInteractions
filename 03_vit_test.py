@@ -7,32 +7,26 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
 from src.model import VitClassifier
-from src.dataset import TorchSavedDataset
+from src.dataset import TorchSavedDataset, SpeciesImageDataModule
 
 # -------------------
 # Main
 # -------------------
 def main(image_dir, args):
-    dataset_train = TorchSavedDataset(image_dir, train=True)
 
-    # Per-GPU batch size
-    gpus = torch.cuda.device_count()
 
-    # DataLoader — fast settings
-    train_loader = DataLoader(
-        dataset_train,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        persistent_workers=True
+    species_data = SpeciesImageDataModule(
+        data_dir = image_dir,
+        batch_size = args.batch_size,
+        num_workers= args.num_workers,
     )
 
-    # Lightning trainer
     net = VitClassifier(
         lr=args.lr
     )
+
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
+    gpus = torch.cuda.device_count()
 
     trainer = pl.Trainer(
         accelerator="gpu",
@@ -43,7 +37,7 @@ def main(image_dir, args):
         enable_progress_bar=False
     )
 
-    trainer.fit(net, train_loader)
+    trainer.fit(net, species_data)
 
 
 if __name__ == '__main__':

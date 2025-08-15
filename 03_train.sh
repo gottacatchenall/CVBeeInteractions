@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:1     
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1  
-#SBATCH --mem=32G      
+#SBATCH --mem=16G      
 #SBATCH --time=00:10:00
 #SBATCH --output=%x-%j.out
 #SBATCH --job-name=ViTTest

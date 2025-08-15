@@ -1,6 +1,6 @@
 import torch
 import os
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 
 # -------------------
@@ -41,3 +41,35 @@ class TorchSavedDataset(Dataset):
         image = self.data[idx]
         label = self.labels[idx]
         return image, label
+
+class SpeciesImageDataModule(pl.LightningDataModule):
+    def __init__(self, data_dir = "./", batch_size = 128, num_workers=0, transform = None):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.transform = transform
+        self.num_workers = num_workers
+
+    def prepare_data(self):
+        pass 
+
+    def setup(self, stage):
+        if stage == "fit":
+            full = TorchSavedDataset(self.data_dir, train=True, transform=self.transform)
+            self.train, self.val = torch.utils.data.random_split(
+                full, [0.8, 0.2], generator=torch.Generator().manual_seed(42)
+            )
+        if stage == "test":
+            self.test = TorchSavedDataset(self.data_dir, train=False, transform=self.transform)
+
+        if stage == "predict":
+            self.predict = TorchSavedDataset(self.data_dir, train=False, transform=self.transform)
+
+    def train_dataloader(self):
+        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+
+    def val_dataloader(self):
+        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+
+    def test_dataloader(self):
+        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
