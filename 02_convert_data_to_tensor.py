@@ -1,9 +1,8 @@
 import torch
-import torchvision
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
+from transformers import AutoFeatureExtractor
 
 import os
 import argparse
@@ -32,10 +31,15 @@ def convert_to_binary_dataset(
         output_dir (str): Directory where the binary files will be saved.
         img_size (tuple): Desired size of the images (width, height).
     """
+    feature_extractor = AutoFeatureExtractor.from_pretrained(
+        "google/vit-base-patch16-224",
+        local_files_only=True,
+        use_fast=True
+    )
     transform = transforms.Compose([
         transforms.Resize(img_size),
-        transforms.ToTensor(), # Converts to [C, H, W] tensor in [0, 1] range
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        transforms.ToTensor(),
+        transforms.Normalize(mean=feature_extractor.image_mean, std=feature_extractor.image_std),
     ])
 
     # 2. Load the Dataset
