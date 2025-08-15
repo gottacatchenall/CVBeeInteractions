@@ -6,7 +6,7 @@
 #SBATCH --mem=16G      
 #SBATCH --time=00:20:00
 #SBATCH --output=%x-%j.out
-#SBATCH --job-name=ViTTest
+#SBATCH --job-name=SIMCLR_test
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
