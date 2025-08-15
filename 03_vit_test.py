@@ -32,13 +32,15 @@ def main(image_dir, args):
     net = VitClassifier(
         lr=args.lr
     )
+    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
 
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=gpus,
         strategy='ddp',
+        num_nodes=num_nodes, 
         max_epochs=args.max_epochs,
-        enable_progress_bar=True
+        enable_progress_bar=False
     )
 
     trainer.fit(net, train_loader)

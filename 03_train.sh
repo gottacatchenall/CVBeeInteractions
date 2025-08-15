@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes 1             
 #SBATCH --nodes 1             
-#SBATCH --gres=gpu:2          # Request 2 GPU "generic resources”.
+#SBATCH --gres=gpu:2        
 #SBATCH --tasks-per-node=2    
 #SBATCH --cpus-per-task=1  
-#SBATCH --mem=16G      
+#SBATCH --mem=32G      
 #SBATCH --time=00:30:00
 #SBATCH --output=%x-%j.out
 #SBATCH --job-name=ViTTest
