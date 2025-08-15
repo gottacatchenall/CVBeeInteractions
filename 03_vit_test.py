@@ -24,8 +24,8 @@ def main(image_dir, args):
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        pin_memory=True,
-        persistent_workers=True
+        #pin_memory=True,
+        #persistent_workers=True
     )
 
     # Lightning trainer
