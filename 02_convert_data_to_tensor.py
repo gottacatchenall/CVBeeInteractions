@@ -57,7 +57,8 @@ def convert_to_binary_dataset(
         print(f"Batch {i} of {len(data_loader)}")
         all_images.append(images)
         all_labels.append(labels)
-        
+
+
     # Concatenate all batches into single, large tensors
     final_images = torch.cat(all_images, dim=0)
     final_labels = torch.cat(all_labels, dim=0)
@@ -65,7 +66,6 @@ def convert_to_binary_dataset(
     # Train/test split
     torch.manual_seed(random_seed)
     indices = torch.randperm(len(dataset))
-    
     # Determine the split point
     split_point = int(len(dataset) * (1 - test_size))
     train_indices = indices[:split_point]
