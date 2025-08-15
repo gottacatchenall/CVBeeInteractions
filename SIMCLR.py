@@ -60,7 +60,7 @@ class SimCLRDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.train_transforms = simclr_transforms(size=224)
-        self.val_transforms = transforms.ToTensor()
+        self.val_transforms = transforms.Compose([])
 
     def prepare_data(self):
         pass 
