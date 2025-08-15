@@ -16,6 +16,14 @@ class VitClassifier(pl.LightningModule):
             "google/vit-base-patch16-224",
             local_files_only=True
         )
+        # --- Freeze ViT layers  ---
+        for param in self.image_model.embeddings.parameters():
+            param.requires_grad = False
+        for param in self.image_model.encoder.parameters():
+            param.requires_grad = False
+        for param in self.image_model.pooler.parameters():
+            param.requires_grad = True
+        
         self.embedding_model = nn.Sequential(
             nn.Linear(768, 64)
         )

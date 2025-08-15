@@ -16,5 +16,5 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 03_vit_test.py --batch_size 512 --cluster --num_workers=1  --max_epochs 5 --species bees
+srun python 03_vit_test.py --batch_size 128 --cluster --num_workers=1  --max_epochs 5 --species bees
 
