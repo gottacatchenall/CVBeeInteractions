@@ -9,46 +9,9 @@ import os
 import argparse
 from torch.utils.data import Dataset, DataLoader
 from src.simclr_transforms import simclr_transforms 
+from src.dataset import WebDatasetDataModule
 import torchvision.transforms as transforms
 
-# -------------------
-# Dataset and Data Module
-# -------------------
-
-    
-class SimCLRDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir="./", batch_size=128, num_workers=0):
-        super().__init__()
-        self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.train_transforms = simclr_transforms(size=224)
-        self.val_transforms = transforms.Compose([])
-
-    def prepare_data(self):
-        pass 
-
-    def setup(self, stage):
-        if stage == "fit":
-            full_dataset = TorchSavedDataset(self.data_dir, train=True)
-            self.train_dataset = TransformedDataset(full_dataset, self.train_transforms)
-            self.val_dataset = TransformedDataset(full_dataset, self.val_transforms)
-    
-    def train_dataloader(self):
-        return DataLoader(
-            self.train_dataset, 
-            batch_size=self.batch_size, 
-            num_workers=self.num_workers, 
-            drop_last=True
-        )
-
-    def val_dataloader(self):
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            drop_last=True
-        )
 
 # -------------------
 # SimCLR Lightning Module
@@ -153,14 +116,19 @@ class SimCLR(pl.LightningModule):
 
 
 def main(image_dir, args):
-    species_data = SimCLRDataModule(
+    species_data = WebDatasetDataModule(
         data_dir = image_dir,
         batch_size = args.batch_size,
-        num_workers = args.num_workers,
+        num_workers= args.num_workers,
+        train_transform = simclr_transforms()
     )
 
+    num_classes = 19 if args.species == "Bombus" else 158
+
+
     net = SimCLR(
-        lr=args.lr
+        lr=args.lr,
+        num_classes=num_classes
     )
 
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", 1))
