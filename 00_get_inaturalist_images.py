@@ -34,7 +34,7 @@ def load_taxon_ids():
 def save_images(observations, dirpath):
     img_metadata = []
     for (i,o) in enumerate(observations):
-        img_url = o.photos[0].url.replace("square", "large")
+        img_url = o.photos[0].url.replace("square", "original")
         img_uuid = str(uuid.uuid4())
         img_path = os.path.join(dirpath, img_uuid + '.jpg')
 
@@ -61,8 +61,8 @@ def save_images(observations, dirpath):
     return img_metadata
 
 
-def download_single_species_images(species_name, max_obs=1000):
-    dirpath = os.path.join("data", "large_img", species_name)
+def download_single_species_images(species_name, max_obs=3000):
+    dirpath = os.path.join("data", "more_bees", species_name)
     if not os.path.exists(dirpath):
         os.mkdir(dirpath)
 
@@ -97,5 +97,5 @@ def download_species_images(species_names):
         download_single_species_images(species_name)
        
 
-species_list = load_species_list()
+species_list = load_species_list()[-19:]
 download_species_images(species_list)

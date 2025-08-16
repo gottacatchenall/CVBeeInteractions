@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 
 from src.model import VitClassifier
 from src.dataset import WebDatasetDataModule
+from src.simclr_transforms import simclr_transforms 
 
 torch.set_float32_matmul_precision('high')
 
@@ -20,6 +21,7 @@ def main(image_dir, args):
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
+        train_transform = simclr_transforms()
     )
 
     num_classes = 19 if args.species == "Bombus" else 158

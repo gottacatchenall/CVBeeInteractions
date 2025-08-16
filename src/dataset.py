@@ -8,28 +8,26 @@ import os
 import glob
 import io
 
-def decode_sample(sample):
-    img_bytes, meta = sample
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+def default_transform(size=224):
+    return transforms.Compose([
+        transforms.Resize((size, size)),
         transforms.ToTensor(),
     ])
-    img = Image.open(io.BytesIO(img_bytes))
-    img = transform(img)
-        
-    # Load label from json bytes
-    label = torch.tensor(meta["label"], dtype=torch.long)
-    return img, label
 
-def make_dataset(shard_pattern, shuffle_buffer=1000):
-    return (
-        wds.WebDataset(shard_pattern, shardshuffle=True)  # shuffle shards
-           .decode()                                     # decode bytes
-           .to_tuple("jpg", "json")     
-           .map(decode_sample)  # transform
-           .shuffle(shuffle_buffer)                      # shuffle samples
-           .repeat()                                     # repeat indefinitely
-    )
+class SamplerDecoder():
+    def __init__(self, transform=None):
+        if transform == None:
+            self.transform = default_transform()
+        else:
+            self.transform = transform
+        
+    def __call__(self, sample):
+        img_bytes, meta = sample
+        img = Image.open(io.BytesIO(img_bytes))
+        img = self.transform(img)
+        label = torch.tensor(meta["label"], dtype=torch.long)
+        return img, label
+
 
 class WebDatasetDataModule(pl.LightningDataModule):
     def __init__(
@@ -38,6 +36,8 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=32, 
             num_workers=0, 
             seed = 42,
+            train_transform = None,
+            test_transform = None,
             train_pattern = "train-*.tar",
             test_pattern = "test-*.tar",
             val_pattern = "val-*.tar"
@@ -51,22 +51,24 @@ class WebDatasetDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
 
     def setup(self, stage=None):
+        test_decoder = SamplerDecoder()
+
         self.train_dataset = (
             wds.WebDataset(self.train_shards, shardshuffle=True)
                .decode()
                .to_tuple("jpg", "json")
-        ).map(decode_sample)
+        ).map(test_decoder)
 
         self.test_dataset = (
             wds.WebDataset(self.test_shards, shardshuffle=True)
                .decode()
                .to_tuple("jpg", "json")
-        ).map(decode_sample)
+        ).map(test_decoder)
         self.val_dataset = (
             wds.WebDataset(self.test_shards, shardshuffle=True)
                .decode()
                .to_tuple("jpg", "json")
-        ).map(decode_sample)
+        ).map(test_decoder)
 
     def train_dataloader(self):
         return DataLoader(
