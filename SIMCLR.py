@@ -128,7 +128,7 @@ def main(image_dir, args):
 
     net = SimCLR(
         lr=args.lr,
-        num_classes=num_classes
+        #num_classes=num_classes
     )
 
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", 1))
