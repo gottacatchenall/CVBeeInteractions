@@ -161,7 +161,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
-    data_dir = "binary_bees" if args.species == "bees" else "binary_plants"
+    data_dir = "bombus_wds" if args.species == "bees" else "plant_wds"
 
     image_dir = os.path.join(base_path, data_dir)
 
