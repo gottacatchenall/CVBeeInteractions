@@ -149,16 +149,16 @@ class SimCLR(pl.LightningModule):
         # 7. Log-softmax 
         log_den = torch.logsumexp(logits, dim=1)    
 
+        # 8. InfoNCE loss = -mean(log p(pos | i))
+        loss = -(pos_logits - log_den).mean()
+
         # Debug NaNs
         if torch.isnan(loss):
             raise ValueError(
                 f"NaN in loss!"
                 f"pos_logits range=({pos_logits.min().item()}, {pos_logits.max().item()}), "
                 f"log_den range=({log_den.min().item()}, {log_den.max().item()}"
-            )
-
-        # 8. InfoNCE loss = -mean(log p(pos | i))
-        loss = -(pos_logits - log_den).mean()
+        )
         return loss
 
 
