@@ -13,8 +13,8 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install --no-index -r requirements.txt
 
-python 02_convert_data_to_tensor.py --cluster --species bees
+python 02_convert_data_to_wds.py --cluster --species bees
 
 echo "Bees done."
 
-python 02_convert_data_to_tensor.py --cluster --species plants
+python 02_convert_data_to_wds.py --cluster --species plants

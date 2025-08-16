@@ -1,77 +1,92 @@
 import torch
-import os
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
+import webdataset as wds
+from PIL import Image
+from torchvision import transforms
 import pytorch_lightning as pl
+import os 
 
+def decode_sample(sample):
+    img_bytes, meta = sample
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+    ])
+    img = Image.open(io.BytesIO(img_bytes))
+    img = transform(img)
+        
+    # Load label from json bytes
+    label = torch.tensor(meta["label"], dtype=torch.long)
+    return img, label
 
-# -------------------
-# Dataset Module
-# -------------------
-class ChunkedData(Dataset):
-    def __init__(self, chunk_paths, cache_chunks=False):
+def make_dataset(shard_pattern, shuffle_buffer=1000):
+    return (
+        wds.WebDataset(shard_pattern, shardshuffle=True)  # shuffle shards
+           .decode()                                     # decode bytes
+           .to_tuple("jpg", "json")     
+           .map(decode_sample)  # transform
+           .shuffle(shuffle_buffer)                      # shuffle samples
+           .repeat()                                     # repeat indefinitely
+    )
 
-        self.chunk_paths = chunk_paths
-        self.cache_chunks = cache_chunks
-        self.chunk_cache = {}
-
-        # Build global index mapping
-        self.index_map = []
-        for chunk_id, path in enumerate(chunk_paths):
-            with open(path, "rb") as f:
-                chunk_data = torch.load(f)
-            for i in range(len(chunk_data)):
-                self.index_map.append((chunk_id, i))
-
-    def _load_chunk(self, chunk_id):
-        if self.cache_chunks and chunk_id in self.chunk_cache:
-            return self.chunk_cache[chunk_id]
-        with open(self.chunk_paths[chunk_id], "rb") as f:
-            data = torch.load(f)
-        if self.cache_chunks:
-            self.chunk_cache[chunk_id] = data
-        return data
-
-    def __len__(self):
-        return len(self.index_map)
-
-    def __getitem__(self, idx):
-        chunk_id, local_idx = self.index_map[idx]
-        chunk = self._load_chunk(chunk_id)
-        sample = chunk[local_idx]
-
-        return sample
-
-
-"""
-class SpeciesImageDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir = "./", batch_size = 128, num_workers=0, transform = None):
+class WebDatasetDataModule(pl.LightningDataModule):
+    def __init__(
+            self, 
+            data_dir, 
+            batch_size=32, 
+            num_workers=0, 
+            seed = 42,
+            train_pattern = "train-{0000..14}.tar",
+            test_pattern = "test-{0000..02}.tar",
+            val_pattern = "val-{0000..04}.tar"
+    ):
         super().__init__()
-        self.data_dir = data_dir
+        self.seed = seed
+        self.train_shards = os.path.join(data_dir, train_pattern)
+        self.test_shards = os.path.join(data_dir, test_pattern)
+        self.val_shards = os.path.join(data_dir, val_pattern)
         self.batch_size = batch_size
-        self.transform = transform
         self.num_workers = num_workers
 
-    def prepare_data(self):
-        pass 
+    def setup(self, stage=None):
+        self.train_dataset = (
+            wds.WebDataset(self.train_shards, shardshuffle=True)
+               .decode()
+               .to_tuple("jpg", "json")
+        ).map(decode_sample)
 
-    def setup(self, stage):
-        if stage == "fit":
-            full = TorchSavedDataset(self.data_dir, train=True, transform=self.transform)
-            self.train, self.val = torch.utils.data.random_split(
-                full, [0.8, 0.2], generator=torch.Generator().manual_seed(42)
-            )
-        if stage == "test":
-            self.test = TorchSavedDataset(self.data_dir, train=False, transform=self.transform)
-
-        if stage == "predict":
-            self.predict = TorchSavedDataset(self.data_dir, train=False, transform=self.transform)
+        self.test_dataset = (
+            wds.WebDataset(self.test_shards, shardshuffle=True)
+               .decode()
+               .to_tuple("jpg", "json")
+        ).map(decode_sample)
+        self.val_dataset = (
+            wds.WebDataset(self.test_shards, shardshuffle=True)
+               .decode()
+               .to_tuple("jpg", "json")
+        ).map(decode_sample)
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
-
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            #collate_fn=collate_to_device,
+        )
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
-
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            #collate_fn=collate_to_device,
+        )
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
-"""
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            #collate_fn=collate_to_device,
+        )
+
+#datamodule = WebDatasetDataModule("data/plant_wds", batch_size=64)
+#datamodule.setup()
