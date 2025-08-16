@@ -5,6 +5,8 @@ from PIL import Image
 from torchvision import transforms
 import pytorch_lightning as pl
 import os 
+import glob
+import io
 
 def decode_sample(sample):
     img_bytes, meta = sample
@@ -36,15 +38,15 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=32, 
             num_workers=0, 
             seed = 42,
-            train_pattern = "train-{0000..14}.tar",
-            test_pattern = "test-{0000..02}.tar",
-            val_pattern = "val-{0000..04}.tar"
+            train_pattern = "train-*.tar",
+            test_pattern = "test-*.tar",
+            val_pattern = "val-*.tar"
     ):
         super().__init__()
         self.seed = seed
-        self.train_shards = os.path.join(data_dir, train_pattern)
-        self.test_shards = os.path.join(data_dir, test_pattern)
-        self.val_shards = os.path.join(data_dir, val_pattern)
+        self.train_shards = [os.path.join(data_dir, x) for x in glob.glob(train_pattern, root_dir=data_dir)]
+        self.test_shards = [os.path.join(data_dir, x) for x in glob.glob(test_pattern, root_dir=data_dir)]
+        self.val_shards = [os.path.join(data_dir, x) for x in glob.glob(val_pattern, root_dir=data_dir)]
         self.batch_size = batch_size
         self.num_workers = num_workers
 
