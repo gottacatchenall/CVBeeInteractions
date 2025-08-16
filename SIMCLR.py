@@ -30,7 +30,7 @@ class TrainDecoder:
     def __call__(self, sample):
         img_bytes, meta = sample
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        xi, xj = self.transform(img)
+        xi, xj = self.transform(img), self.transform(img)
         label = torch.tensor(meta["label"], dtype=torch.long) if "label" in meta else -1
         return xi, xj, label
 
