@@ -15,17 +15,10 @@ import webdataset as wds
 from PIL import Image
 import glob
 
-def default_transform(size=224):
-    return transforms.Compose([
-        transforms.Resize((size, size)),
-        transforms.ToTensor(),
-    ])
-
-
 class TrainDecoder:
     """Return two augmented views for SimCLR."""
     def __init__(self, transform=None):
-        self.transform = transform or simclr_transforms()
+        self.transform = simclr_transforms()
     
     def __call__(self, sample):
         img_bytes, meta = sample
@@ -35,7 +28,7 @@ class TrainDecoder:
         return xi, xj, label
 
 
-class WebDatasetDataModule(pl.LightningDataModule):
+class SIMCLRDataModule(pl.LightningDataModule):
     def __init__(
         self, 
         data_dir, 
@@ -190,19 +183,14 @@ class SimCLR(pl.LightningModule):
 
 
 def main(image_dir, args):
-    species_data = WebDatasetDataModule(
+    species_data = SIMCLRDataModule(
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
-        train_transform = simclr_transforms()
     )
-
-    num_classes = 19 if args.species == "Bombus" else 158
-
 
     net = SimCLR(
         lr=args.lr,
-        #num_classes=num_classes
     )
 
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", 1))
