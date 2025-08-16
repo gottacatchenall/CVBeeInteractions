@@ -14,6 +14,7 @@ import torchvision.transforms as transforms
 import webdataset as wds
 from PIL import Image
 import glob
+import io 
 
 class TrainDecoder:
     """Return two augmented views for SimCLR."""
