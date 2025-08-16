@@ -7,42 +7,42 @@ import pytorch_lightning as pl
 # -------------------
 # Dataset Module
 # -------------------
-class TorchSavedDataset(Dataset):
-    def __init__(self, file_path, train=True, transform=None):
-        if "dataset.pt" not in file_path:
-            file_path = os.path.join(file_path, "dataset.pt")
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Dataset file not found: {file_path}")
-        print(f"Loading dataset from: {file_path}")
-        
-        # Load the entire dataset dictionary
-        dataset_dict = torch.load(file_path)
-        
-        # Ensure the necessary keys are present
-        if 'data' not in dataset_dict or 'labels' not in dataset_dict:
-            raise ValueError("The .pt file must contain 'data' and 'labels' keys.")
+class ChunkedData(Dataset):
+    def __init__(self, chunk_paths, cache_chunks=False):
 
-        idx = dataset_dict['train_indices'] if train else dataset_dict['test_indices']
+        self.chunk_paths = chunk_paths
+        self.cache_chunks = cache_chunks
+        self.chunk_cache = {}
 
+        # Build global index mapping
+        self.index_map = []
+        for chunk_id, path in enumerate(chunk_paths):
+            with open(path, "rb") as f:
+                chunk_data = torch.load(f)
+            for i in range(len(chunk_data)):
+                self.index_map.append((chunk_id, i))
 
-        self.data = dataset_dict['data'].index_select(0, idx)
-        self.labels = dataset_dict['labels'].index_select(0, idx)
-        self.classes = dataset_dict['classes']
+    def _load_chunk(self, chunk_id):
+        if self.cache_chunks and chunk_id in self.chunk_cache:
+            return self.chunk_cache[chunk_id]
+        with open(self.chunk_paths[chunk_id], "rb") as f:
+            data = torch.load(f)
+        if self.cache_chunks:
+            self.chunk_cache[chunk_id] = data
+        return data
 
-        # Ensure data and labels have the same number of samples
-        if self.data.shape[0] != self.labels.shape[0]:
-            raise ValueError("Number of samples in data and labels do not match.")
-        self.num_samples = self.data.shape[0]
-        print(f"Successfully loaded {self.num_samples} samples.")
-       
     def __len__(self):
-        return self.num_samples
+        return len(self.index_map)
 
     def __getitem__(self, idx):
-        image = self.data[idx]
-        label = self.labels[idx]
-        return image, label
+        chunk_id, local_idx = self.index_map[idx]
+        chunk = self._load_chunk(chunk_id)
+        sample = chunk[local_idx]
 
+        return sample
+
+
+"""
 class SpeciesImageDataModule(pl.LightningDataModule):
     def __init__(self, data_dir = "./", batch_size = 128, num_workers=0, transform = None):
         super().__init__()
@@ -74,3 +74,4 @@ class SpeciesImageDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+"""

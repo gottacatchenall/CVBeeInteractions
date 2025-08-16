@@ -183,9 +183,8 @@ class SimCLR(pl.LightningModule):
     def configure_gradient_clipping(
         self,
         optimizer, 
-        optimizer_idx,
-        gradient_clip_val=1.0, 
-        gradient_clip_algorithm="norm"
+        gradient_clip_val, 
+        gradient_clip_algorithm
     ):
         self.clip_gradients(optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm)
 
@@ -210,6 +209,7 @@ def main(image_dir, args):
         strategy='ddp',
         profiler="simple",
         num_nodes=num_nodes, 
+        gradient_clip_val = args.gradient_clip,
         max_epochs=args.max_epochs,
         enable_progress_bar=False,
     )
@@ -220,6 +220,7 @@ def main(image_dir, args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--gradient_clip', type=float, default=1.0)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
