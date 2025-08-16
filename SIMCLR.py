@@ -149,6 +149,14 @@ class SimCLR(pl.LightningModule):
         # 7. Log-softmax 
         log_den = torch.logsumexp(logits, dim=1)    
 
+        # Debug NaNs
+        if torch.isnan(loss):
+            raise ValueError(
+                f"NaN in loss!"
+                f"pos_logits range=({pos_logits.min().item()}, {pos_logits.max().item()}), "
+                f"log_den range=({log_den.min().item()}, {log_den.max().item()}"
+            )
+
         # 8. InfoNCE loss = -mean(log p(pos | i))
         loss = -(pos_logits - log_den).mean()
         return loss
@@ -171,6 +179,16 @@ class SimCLR(pl.LightningModule):
             
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+    def configure_gradient_clipping(
+        self,
+        optimizer, 
+        optimizer_idx,
+        gradient_clip_val=1.0, 
+        gradient_clip_algorithm="norm"
+    ):
+        self.clip_gradients(optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm)
+
 
 def main(image_dir, args):
     species_data = SimCLRDataModule(
@@ -202,6 +220,7 @@ def main(image_dir, args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)

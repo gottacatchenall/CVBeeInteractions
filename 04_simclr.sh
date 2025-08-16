@@ -16,5 +16,5 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python SIMCLR.py --batch_size 128 --cluster --num_workers=1  --max_epochs 100 --species bees
+srun python SIMCLR.py --batch_size 128 --cluster --num_workers=1  --max_epochs 100 --species bees --temperature 1.0
 
