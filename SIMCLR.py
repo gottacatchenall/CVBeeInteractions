@@ -11,11 +11,85 @@ from torch.utils.data import Dataset, DataLoader
 from src.simclr_transforms import simclr_transforms 
 from src.dataset import WebDatasetDataModule
 import torchvision.transforms as transforms
+import webdataset as wds
+from PIL import Image
+import glob
+
+def default_transform(size=224):
+    return transforms.Compose([
+        transforms.Resize((size, size)),
+        transforms.ToTensor(),
+    ])
+
+
+class TrainDecoder:
+    """Return two augmented views for SimCLR."""
+    def __init__(self, transform=None):
+        self.transform = transform or simclr_transforms()
+    
+    def __call__(self, sample):
+        img_bytes, meta = sample
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        xi, xj = self.transform(img)
+        label = torch.tensor(meta["label"], dtype=torch.long) if "label" in meta else -1
+        return xi, xj, label
+
+
+class WebDatasetDataModule(pl.LightningDataModule):
+    def __init__(
+        self, 
+        data_dir, 
+        batch_size=32, 
+        num_workers=0, 
+        seed=42,
+        train_pattern="train-*.tar",
+        test_pattern="test-*.tar",
+        val_pattern="val-*.tar"
+    ):
+        super().__init__()
+        self.seed = seed
+        self.train_shards = [os.path.join(data_dir, x) for x in glob.glob(train_pattern, root_dir=data_dir)]
+        self.test_shards = [os.path.join(data_dir, x) for x in glob.glob(test_pattern, root_dir=data_dir)]
+        self.val_shards = [os.path.join(data_dir, x) for x in glob.glob(val_pattern, root_dir=data_dir)]
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+
+    def setup(self, stage=None):
+        self.train_dataset = (
+            wds.WebDataset(self.train_shards, shardshuffle=True)
+              .decode()
+              .to_tuple("jpg", "json")
+              .map(TrainDecoder())
+        )
+
+        self.val_dataset = (
+            wds.WebDataset(self.val_shards, shardshuffle=True)
+              .decode()
+              .to_tuple("jpg", "json")
+              .map(TrainDecoder())
+        )
+    
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            drop_last=True,
+            shuffle=False
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+        )
 
 
 # -------------------
 # SimCLR Lightning Module
 # -------------------
+
 class SimCLR(pl.LightningModule):
     def __init__(self, lr=1e-3, temperature=0.5):
         super().__init__()
