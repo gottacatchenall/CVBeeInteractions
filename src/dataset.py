@@ -88,5 +88,3 @@ class WebDatasetDataModule(pl.LightningDataModule):
             #collate_fn=collate_to_device,
         )
 
-#datamodule = WebDatasetDataModule("data/plant_wds", batch_size=64)
-#datamodule.setup()

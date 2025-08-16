@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
 from src.model import VitClassifier
-from src.dataset import TorchSavedDataset, SpeciesImageDataModule
+from src.dataset import WebDatasetDataModule
 
 torch.set_float32_matmul_precision('high')
 
@@ -16,9 +16,7 @@ torch.set_float32_matmul_precision('high')
 # Main
 # -------------------
 def main(image_dir, args):
-
-
-    species_data = SpeciesImageDataModule(
+    species_data = WebDatasetDataModule(
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
