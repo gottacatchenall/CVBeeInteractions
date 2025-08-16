@@ -1,9 +1,6 @@
 from pyinaturalist import *
 from dotenv import load_dotenv
 
-from pygbif import occurrences
-from pygbif import species
-
 import uuid
 import requests
 import os 

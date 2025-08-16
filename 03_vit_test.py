@@ -22,8 +22,11 @@ def main(image_dir, args):
         num_workers= args.num_workers,
     )
 
+    num_classes = 19 if args.species == "Bombus" else 158
+
     net = VitClassifier(
-        lr=args.lr
+        lr=args.lr,
+        num_classes=num_classes
     )
 
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
