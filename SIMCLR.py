@@ -8,7 +8,6 @@ import torchmetrics
 import os
 import argparse
 from torch.utils.data import Dataset, DataLoader
-from src.simclr_transforms import simclr_transforms 
 from src.dataset import WebDatasetDataModule
 import torchvision.transforms as transforms
 import webdataset as wds
@@ -18,8 +17,15 @@ import io
 
 class TrainDecoder:
     """Return two augmented views for SimCLR."""
-    def __init__(self, transform=None):
-        self.transform = simclr_transforms()
+    def __init__(self, size=(224,224)):
+        self.transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=size, scale=(0.2, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
     
     def __call__(self, sample):
         img_bytes, meta = sample
