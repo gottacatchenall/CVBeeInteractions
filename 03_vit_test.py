@@ -24,7 +24,7 @@ def main(image_dir, args):
         train_transform = simclr_transforms()
     )
 
-    num_classes = 19 if args.species == "Bombus" else 158
+    num_classes = 19 if args.species == "bees" else 158
 
     net = VitClassifier(
         lr=args.lr,
