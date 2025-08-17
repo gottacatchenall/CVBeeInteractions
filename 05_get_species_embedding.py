@@ -89,9 +89,10 @@ def main(args):
     emb = get_mean_embeddings(model, species_data, num_classes, device)
     emb_dict = {}
     for i in range(emb.shape[0]):
-        emb_dict[class_dict[i]] = emb[i,:]
+        emb_dict[class_dict[i]] = torch.tensor(emb[i,:])
 
-    emb_dict.save(os.path.join(base_path, args.species + "_embed.pt"))
+
+    torch.save(emb_dict, os.path.join(base_path, args.species + "_embed.pt"))
 
 
 
