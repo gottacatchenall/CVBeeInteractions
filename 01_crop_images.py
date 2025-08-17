@@ -81,19 +81,19 @@ def process_species_images(processor, model, base_path, img_dir, species_name, d
         )
 
         if len(results) > 0:
-            # Handle detections + async saving
-            box = results[0]["boxes"][0]
-            cropped_img = crop_image(img, box)
-            img_uuid = str(uuid.uuid4())
-            save_path = os.path.join(outdir_path, img_uuid + ".jpg")
-            cropped_img.save(save_path)
-            obj = {
-                "path": save_path,
-                "user_id": metadata_df["user_id"].iloc[i],
-                "username": metadata_df["username"].iloc[i],
-                "observation_id": metadata_df["user_id"].iloc[i],
-            }
-            metadata.append(obj)
+            if len(results[0]["boxes"]) > 0:
+                box = results[0]["boxes"][0]
+                cropped_img = crop_image(img, box)
+                img_uuid = str(uuid.uuid4())
+                save_path = os.path.join(outdir_path, img_uuid + ".jpg")
+                cropped_img.save(save_path)
+                obj = {
+                    "path": save_path,
+                    "user_id": metadata_df["user_id"].iloc[i],
+                    "username": metadata_df["username"].iloc[i],
+                    "observation_id": metadata_df["user_id"].iloc[i],
+                }
+                metadata.append(obj)
 
     df = pd.DataFrame(metadata)
     df.to_csv(os.path.join(outdir_path, "_metadata.csv"), index=False)
