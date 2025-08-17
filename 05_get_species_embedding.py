@@ -39,6 +39,9 @@ def get_mean_embeddings(model, datamodule, num_classes, device):
             embed_sum[s.item(),:] += e[i,:]
             class_ct[s.item()] += 1
         batchct += 1
+        del e
+        del x
+        del y
         torch.cuda.empty_cache()
 
     return (embed_sum.transpose(0,1) / class_ct).transpose(0,1)
