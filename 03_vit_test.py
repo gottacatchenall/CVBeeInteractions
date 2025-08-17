@@ -2,7 +2,7 @@ import os
 import argparse
 
 import torch
-from torch.utils.data import DataLoader
+from lightning.pytorch.loggers import CSVLogger
 
 import pytorch_lightning as pl
 
@@ -16,7 +16,7 @@ torch.set_float32_matmul_precision('high')
 # -------------------
 # Main
 # -------------------
-def main(image_dir, args):
+def main(image_dir, log_path, args):
     species_data = WebDatasetDataModule(
         data_dir = image_dir,
         batch_size = args.batch_size,
@@ -31,17 +31,17 @@ def main(image_dir, args):
         num_classes=num_classes
     )
 
-    
+    logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
 
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
     gpus = torch.cuda.device_count()
 
-    #trainer = pl.Trainer(accelerator="mps")
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=gpus,
         strategy='ddp',
         profiler="simple",
+        logger=logger,
         num_nodes=num_nodes, 
         max_epochs=args.max_epochs,
         enable_progress_bar=False
@@ -64,5 +64,5 @@ if __name__ == '__main__':
     data_dir = "bombus_wds" if args.species == "bees" else "plant_wds"
 
     image_dir = os.path.join(base_path, data_dir)
-
-    main(image_dir, args)
+    log_path = os.path.join(base_path, "logs")
+    main(image_dir, log_path, args)
