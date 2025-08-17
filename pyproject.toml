@@ -23,4 +23,5 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.54.1",
     "webdataset>=1.0.2",
+    "xgboost>=3.0.4",
 ]
