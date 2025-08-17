@@ -33,7 +33,6 @@ def get_mean_embeddings(model, datamodule, num_classes, device):
 
     batchct = 0
     for x,y in dataloader:
-        print(f"batch {batchct}")
         x,y= x.to(device), y.to(device)
         e = model.embedding_model(model.image_model(x).pooler_output)
         for i,s in enumerate(y):
