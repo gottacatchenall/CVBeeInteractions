@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --nodes 1             
-#SBATCH --gres=gpu:2  
-#SBATCH --tasks-per-node=2
-#SBATCH --cpus-per-task=2
+#SBATCH --gres=gpu:1  
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=16G      
 #SBATCH --time=3:00:00
 #SBATCH --output=%x-%j.out
