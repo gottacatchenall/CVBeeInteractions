@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=8:00:00
+#SBATCH --time=6:00:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
 #SBATCH --gres=gpu:1 # request a GPU
@@ -13,5 +13,6 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 
 pip install --no-index -r requirements.txt
+
 
 python 01_crop_images.py --cluster
