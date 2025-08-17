@@ -11,9 +11,9 @@ import torchmetrics
 # Lightning Module
 # -------------------
 class VitClassifier(pl.LightningModule):
-    def __init__(self, lr = 1e-3, num_classes=19):
+    def __init__(self, lr = 1e-3, gamma=0.95, num_classes=19):
         super().__init__()
-        self.lr = lr
+        self.save_hyperparameters()
         self.image_model = AutoModel.from_pretrained(
             "google/vit-base-patch16-224",
             local_files_only=True
@@ -32,11 +32,13 @@ class VitClassifier(pl.LightningModule):
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
-        )
-        self.classification_head = nn.Sequential(
+            nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, num_classes)
+            nn.Linear(64, 32),
+        )
+        self.classification_head = nn.Sequential(
+            nn.Linear(32, num_classes)
         )
 
         self.train_metrics = torchmetrics.MetricCollection(
@@ -67,6 +69,7 @@ class VitClassifier(pl.LightningModule):
             batch_value = self.train_metrics(y_hat, y)
             self.log_dict(batch_value)
         return loss
+    
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
@@ -77,5 +80,20 @@ class VitClassifier(pl.LightningModule):
             self.log_dict(batch_value)
             
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+        # ExponentialLR scheduler
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer, gamma=self.hparams.gamma
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",   # or "step"
+                "frequency": 1,
+            },
+        }
+
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes 1             
-#SBATCH --gres=gpu:1     
+#SBATCH --gres=gpu:2  
 #SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=1  
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=16G      
-#SBATCH --time=06:00:00
+#SBATCH --time=3:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --job-name=ViTTest
 
@@ -16,5 +16,5 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 03_vit_test.py --batch_size 128 --cluster --num_workers=1  --max_epochs 75 --species plants
+srun python 03_vit_test.py --batch_size 128 --cluster --num_workers=2 --max_epochs 150 --species plants --lr 3e-4
 

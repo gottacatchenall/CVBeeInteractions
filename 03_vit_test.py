@@ -31,6 +31,8 @@ def main(image_dir, args):
         num_classes=num_classes
     )
 
+    
+
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
     gpus = torch.cuda.device_count()
 
