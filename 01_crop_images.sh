@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=6:00:00
+#SBATCH --time=18:00:00
 #SBATCH --account=def-tpoisot
 #SBATCH --nodes 1
 #SBATCH --gres=gpu:1 # request a GPU
