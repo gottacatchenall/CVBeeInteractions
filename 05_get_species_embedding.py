@@ -36,7 +36,7 @@ def get_mean_embeddings(model, datamodule, num_classes, device):
         x = x.to(device)
         with torch.no_grad():
             e = model.embedding_model(model.image_model(x).pooler_output)
-            e.to('cpu')
+            e = e.to('cpu')
             for i,s in enumerate(y):
                 embed_sum[s.item(),:] += e[i,:]
                 class_ct[s.item()] += 1
