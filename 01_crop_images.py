@@ -57,7 +57,7 @@ def process_species_images(processor, model, base_path, img_dir, species_name, d
     image_paths = [os.path.join(base_path, image_path) for image_path in metadata_df.image]
 
     outdir_path = os.path.join(base_path, "data", outdir_name, species_name)
-    if not os.path.exists(outdir_path):
+    if not os.path.exists(os.path.join(base_path, "data", outdir_name)):
         os.mkdir(os.path.join(base_path, "data", outdir_name))
     if not os.path.exists(outdir_path):
         os.mkdir(outdir_path)
@@ -80,20 +80,20 @@ def process_species_images(processor, model, base_path, img_dir, species_name, d
             target_sizes=[img.size[::-1]]
         )
 
-        # Handle detections + async saving
-        for result in results:
-            for box in result["boxes"]:
-                cropped_img = crop_image(img, box)
-                img_uuid = str(uuid.uuid4())
-                save_path = os.path.join(outdir_path, img_uuid + ".jpg")
-                cropped_img.save(save_path)
-                obj = {
-                    "path": save_path,
-                    "user_id": metadata_df["user_id"].iloc[i],
-                    "username": metadata_df["username"].iloc[i],
-                    "observation_id": metadata_df["user_id"].iloc[i],
-                }
-                metadata.append(obj)
+        if len(results) > 0:
+            # Handle detections + async saving
+            box = results[0]["boxes"][0]
+            cropped_img = crop_image(img, box)
+            img_uuid = str(uuid.uuid4())
+            save_path = os.path.join(outdir_path, img_uuid + ".jpg")
+            cropped_img.save(save_path)
+            obj = {
+                "path": save_path,
+                "user_id": metadata_df["user_id"].iloc[i],
+                "username": metadata_df["username"].iloc[i],
+                "observation_id": metadata_df["user_id"].iloc[i],
+            }
+            metadata.append(obj)
 
     df = pd.DataFrame(metadata)
     df.to_csv(os.path.join(outdir_path, "_metadata.csv"), index=False)
