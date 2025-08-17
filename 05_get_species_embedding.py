@@ -26,23 +26,22 @@ def load_model(ckpt, num_classes):
 
 def get_mean_embeddings(model, datamodule, num_classes, device):
     model.to(device)
-    embed_sum = torch.zeros(num_classes, 128).to(device)
-    class_ct = torch.zeros(num_classes).to(device)
+    embed_sum = torch.zeros(num_classes, 128)
+    class_ct = torch.zeros(num_classes)
 
     dataloader = datamodule.train_dataloader()
 
     batchct = 0
     for x,y in dataloader:
-        x,y= x.to(device), y.to(device)
-        e = model.embedding_model(model.image_model(x).pooler_output)
-        for i,s in enumerate(y):
-            embed_sum[s.item(),:] += e[i,:]
-            class_ct[s.item()] += 1
-        batchct += 1
-        del e
-        del x
-        del y
-        torch.cuda.empty_cache()
+        x = x.to(device)
+        with torch.no_grad():
+            e = model.embedding_model(model.image_model(x).pooler_output)
+            e.to('cpu')
+            for i,s in enumerate(y):
+                embed_sum[s.item(),:] += e[i,:]
+                class_ct[s.item()] += 1
+            batchct += 1
+    
 
     return (embed_sum.transpose(0,1) / class_ct).transpose(0,1)
 
@@ -76,7 +75,8 @@ def main(args):
 
     
     species_data = WebDatasetDataModule(
-        data_dir = image_dir
+        data_dir = image_dir,
+        batch_size=args.batch_size
     )
     species_data.setup('fit')
 
@@ -102,6 +102,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
     args = parser.parse_args()
