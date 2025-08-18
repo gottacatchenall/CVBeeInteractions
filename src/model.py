@@ -20,7 +20,6 @@ class VitClassifier(pl.LightningModule):
             "google/vit-base-patch16-224",
             local_files_only=True
         )
-        """
         # --- Freeze ViT layers  ---
         for param in self.image_model.embeddings.parameters():
             param.requires_grad = False
@@ -28,11 +27,19 @@ class VitClassifier(pl.LightningModule):
             param.requires_grad = False
         for param in self.image_model.pooler.parameters():
             param.requires_grad = True
-        
+        """
+        model_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
+        self.image_model = AutoModel.from_pretrained(
+            model_name, 
+            local_files_only=True
+        )
+        # --- Freeze ViT layers  ---
+        for param in self.image_model.parameters():
+            param.requires_grad = False
+
+        image_model_output_dim = 201
         self.embedding_model = nn.Sequential(
-            nn.Linear(768, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(image_model_output_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -58,7 +65,8 @@ class VitClassifier(pl.LightningModule):
         self.valid_metrics = self.train_metrics.clone(prefix="valid_")
 
     def forward(self, x):
-        x = self.image_model(x).pooler_output
+        # x =  self.image_model(x).pooler_output
+        x = self.image_model(x).last_hidden_state[0,:,0]
         x = self.embedding_model(x)
         x = self.classification_head(x)
         return x
@@ -98,35 +106,3 @@ class VitClassifier(pl.LightningModule):
                 "frequency": 1,
             },
         }
-
-
-from src.dataset import WebDatasetDataModule
-
-species_data = WebDatasetDataModule(
-    data_dir = "./data/bombus_wds",
-    batch_size = 32,
-)
-
-num_classes = 19 if args.species == "bees" else 158
-
-species_data.setup('fit')
-dl = species_data.train_dataloader()
-x,y = next(iter(dl))
-x,y = x.to('mps'), y.to('mps')
-
-model_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
-processor = AutoImageProcessor.from_pretrained(
-    model_name
-)
-model = AutoModel.from_pretrained(
-    model_name, 
-)
-
-model.to('mps')
-
-with torch.no_grad():
-    outputs = model(x)
-
-pooled_output = outputs.pooler_output
-
-pooled_output
