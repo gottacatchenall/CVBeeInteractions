@@ -36,6 +36,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=32, 
             num_workers=0, 
             seed = 42,
+            persistent_workers = False,
             train_transform = None,
             test_transform = None,
             train_pattern = "train-*.tar",
@@ -75,6 +76,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers = self.persistent_workers
             #collate_fn=collate_to_device,
         )
     def val_dataloader(self):
@@ -82,6 +84,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers = self.persistent_workers
             #collate_fn=collate_to_device,
         )
     def test_dataloader(self):
@@ -89,6 +92,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers = self.persistent_workers
             #collate_fn=collate_to_device,
         )
 

@@ -22,6 +22,7 @@ def main(image_dir, log_path, args):
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
+        persistent_workers = args.persistent_workers
     )
 
     num_classes = 19 if args.species == "bees" else 158
@@ -57,6 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--cluster', action='store_true')
+    parser.add_argument('--persistent_workers', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
     args = parser.parse_args()
 
