@@ -66,7 +66,7 @@ class VitClassifier(pl.LightningModule):
 
     def forward(self, x):
         # x =  self.image_model(x).pooler_output
-        x = self.image_model(x).last_hidden_state[0,:,0]
+        x = self.image_model(x).last_hidden_state[:,:,0]
         x = self.embedding_model(x)
         x = self.classification_head(x)
         return x
@@ -106,3 +106,20 @@ class VitClassifier(pl.LightningModule):
                 "frequency": 1,
             },
         }
+
+
+"""
+import src.dataset
+species_data = WebDatasetDataModule(
+    data_dir = "./data/bombus_wds",
+)
+species_data.setup('fit')
+dl = species_data.train_dataloader()
+vit = VitClassifier()
+x,y = next(iter(dl))
+x = vit.image_model(x).last_hidden_state[:,:,0]
+x = vit.embedding_model(x)
+x = vit.classification_head(x)
+yhat = vit(x)
+yhat.shape, y.shape
+"""
