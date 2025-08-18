@@ -46,7 +46,6 @@ class VitClassifier(pl.LightningModule):
             param.requires_grad = False
 
         image_model_output_dim = image_embed_dim()[model_type]
-        print(f"Image Out Dim: {image_model_output_dim}")
         self.embedding_model = nn.Sequential(
             nn.Linear(image_model_output_dim, 256),
             nn.ReLU(),
