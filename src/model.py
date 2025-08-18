@@ -6,6 +6,7 @@ from torchvision.transforms import v2
 
 import pytorch_lightning as pl
 import torchmetrics
+import kornia.augmentation as K
 
 # -------------------
 # Lightning Module
@@ -51,19 +52,13 @@ class VitClassifier(pl.LightningModule):
         self.classification_head = nn.Sequential(
             nn.Linear(32, num_classes)
         )
-
-        self.transform = v2.Compose([
-                v2.ToTensor(),
-                v2.RandomResizedCrop(size=(224,224), scale=(0.2, 1.0)),
-                v2.RandomHorizontalFlip(),
-                v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
-                v2.RandomGrayscale(p=0.2),
-                #v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-                v2.Normalize(
-                    mean=(0.485, 0.456, 0.406),
-                    std=(0.229, 0.224, 0.225),
-                )
-            ])
+        self.transform = torch.nn.Sequential(
+            K.RandomResizedCrop((224,224), scale=(0.2,1.0)),
+            K.RandomHorizontalFlip(),
+            K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
+            K.RandomGrayscale(p=0.2),
+            K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
+        ).to("cuda")
 
         self.train_metrics = torchmetrics.MetricCollection(
             {
@@ -128,6 +123,8 @@ class VitClassifier(pl.LightningModule):
 
 
 """
+from src.model import VitClassifier
+from src.dataset import WebDatasetDataModule
 import src.dataset
 species_data = WebDatasetDataModule(
     data_dir = "./data/bombus_wds",
