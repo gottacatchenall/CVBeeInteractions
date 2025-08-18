@@ -50,7 +50,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
         self.val_shards = [os.path.join(data_dir, x) for x in glob.glob(val_pattern, root_dir=data_dir)]
         self.batch_size = batch_size
         self.num_workers = num_workers
-
+        self.persistent_workers = persistent_workers
     def setup(self, stage=None):
         test_decoder = SamplerDecoder()
 

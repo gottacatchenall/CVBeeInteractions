@@ -60,6 +60,9 @@ if __name__ == '__main__':
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--persistent_workers', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
+    parser.add_argument('--model', default='base', choices=['plants', 'bees'])
+
+
     args = parser.parse_args()
 
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
