@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 
 from src.model import VitClassifier
 from src.dataset import WebDatasetDataModule
-from src.simclr_transforms import simclr_transforms 
+from src.checkpoints import AsyncTrainableCheckpoint 
 
 
 torch.set_float32_matmul_precision('high')
@@ -36,6 +36,10 @@ def main(image_dir, log_path, args):
 
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
 
+    checkpoint_cb = AsyncTrainableCheckpoint(
+        dirpath = os.path.join(log_path, "checkpoints")
+    )
+
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
     gpus = torch.cuda.device_count()
 
@@ -45,6 +49,8 @@ def main(image_dir, log_path, args):
         strategy='ddp',
         profiler="simple",
         logger=logger,
+        enable_checkpointing=False,   # Turn off default ckpt
+        callbacks=[checkpoint_cb],
         num_nodes=num_nodes, 
         max_epochs=args.max_epochs,
         enable_progress_bar=False
@@ -76,4 +82,3 @@ if __name__ == '__main__':
     main(image_dir, log_path, args)
 
 
-    
