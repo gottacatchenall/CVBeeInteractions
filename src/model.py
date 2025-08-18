@@ -14,6 +14,13 @@ def model_paths():
         "large": "facebook/dinov3-vitl16-pretrain-lvd1689m",    # 303M Params
         "huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m", # 841M Params
     }
+
+def image_embed_dim():
+    return {      
+        "base": 768,     # 87M Params
+        "large": 1024,   # 303M Params
+        "huge": 1280,    # 841M Params
+    }
 # -------------------
 # Lightning Module
 # -------------------
@@ -50,7 +57,7 @@ class VitClassifier(pl.LightningModule):
         for param in self.image_model.parameters():
             param.requires_grad = False
 
-        image_model_output_dim = 768
+        image_model_output_dim = image_embed_dim()[model_type]
         #image_model_output_dim = 201
         self.embedding_model = nn.Sequential(
             nn.Linear(image_model_output_dim, 256),
@@ -143,7 +150,10 @@ species_data = WebDatasetDataModule(
 )
 species_data.setup('fit')
 dl = species_data.train_dataloader()
-vit = VitClassifier()
+net = VitClassifier(
+        num_classes=19,
+        model_type = "huge"
+)        
 x,y = next(iter(dl))
 x = vit.image_model(x).pooler_output
 x = vit.embedding_model(x)

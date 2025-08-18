@@ -74,3 +74,6 @@ if __name__ == '__main__':
     image_dir = os.path.join(base_path, data_dir)
     log_path = os.path.join(base_path, "logs")
     main(image_dir, log_path, args)
+
+
+    
