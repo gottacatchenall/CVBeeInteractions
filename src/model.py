@@ -53,7 +53,7 @@ class VitClassifier(pl.LightningModule):
         )
 
         self.transform = v2.Compose([
-                v2.ToDtype(torch.uint8),
+                v2.ToTensor(),
                 v2.RandomResizedCrop(size=(224,224), scale=(0.2, 1.0)),
                 v2.RandomHorizontalFlip(),
                 v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
