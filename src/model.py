@@ -35,19 +35,7 @@ class VitClassifier(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         
-        """
-        self.image_model = AutoModel.from_pretrained(
-            "google/vit-base-patch16-224",
-            local_files_only=True
-        )
-        # --- Freeze ViT layers  ---
-        for param in self.image_model.embeddings.parameters():
-            param.requires_grad = False
-        for param in self.image_model.encoder.parameters():
-            param.requires_grad = False
-        for param in self.image_model.pooler.parameters():
-            param.requires_grad = True
-        """
+    
         model_name = model_paths()[model_type]
         self.image_model = AutoModel.from_pretrained(
             model_name, 
@@ -58,7 +46,7 @@ class VitClassifier(pl.LightningModule):
             param.requires_grad = False
 
         image_model_output_dim = image_embed_dim()[model_type]
-        #image_model_output_dim = 201
+        print(f"Image Out Dim: {image_model_output_dim}")
         self.embedding_model = nn.Sequential(
             nn.Linear(image_model_output_dim, 256),
             nn.ReLU(),
@@ -152,7 +140,7 @@ species_data.setup('fit')
 dl = species_data.train_dataloader()
 net = VitClassifier(
         num_classes=19,
-        model_type = "huge"
+        model_type = "large"
 )        
 x,y = next(iter(dl))
 x = vit.image_model(x).pooler_output
