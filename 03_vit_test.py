@@ -22,7 +22,8 @@ def main(image_dir, log_path, args):
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
-        persistent_workers = args.persistent_workers
+        persistent_workers = args.persistent_workers,
+        prefetch_factor = args.prefetch_factor
     )
 
     num_classes = 19 if args.species == "bees" else 158
@@ -30,6 +31,7 @@ def main(image_dir, log_path, args):
     net = VitClassifier(
         lr=args.lr,
         num_classes=num_classes
+        model_type = args.model
     )
 
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
@@ -58,9 +60,10 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--cluster', action='store_true')
+    parser.add_argument('--prefetch_factor', type=int, default=4)
     parser.add_argument('--persistent_workers', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
-    parser.add_argument('--model', default='base', choices=['plants', 'bees'])
+    parser.add_argument('--model', default='base', choices=['base', 'large', 'huge'])
 
 
     args = parser.parse_args()

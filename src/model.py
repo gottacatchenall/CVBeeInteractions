@@ -8,11 +8,23 @@ import pytorch_lightning as pl
 import torchmetrics
 import kornia.augmentation as K
 
+def model_paths():
+    return {      
+        "base": "facebook/dinov3-vitb16-pretrain-lvd1689m",     # 87M Params
+        "large": "facebook/dinov3-vitl16-pretrain-lvd1689m",    # 303M Params
+        "huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m", # 841M Params
+    }
 # -------------------
 # Lightning Module
 # -------------------
 class VitClassifier(pl.LightningModule):
-    def __init__(self, lr = 1e-3, gamma=0.95, num_classes=19):
+    def __init__(
+            self, 
+            lr = 1e-3, 
+            gamma=0.95, 
+            num_classes=19, 
+            model_type="base"
+    ):
         super().__init__()
         self.save_hyperparameters()
         
@@ -29,7 +41,7 @@ class VitClassifier(pl.LightningModule):
         for param in self.image_model.pooler.parameters():
             param.requires_grad = True
         """
-        model_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
+        model_name = model_paths()[model_type]
         self.image_model = AutoModel.from_pretrained(
             model_name, 
             local_files_only=True

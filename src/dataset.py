@@ -36,6 +36,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=32, 
             num_workers=0, 
             seed = 42,
+            prefetch_factor = 2,
             persistent_workers = False,
             train_transform = None,
             test_transform = None,
@@ -50,6 +51,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
         self.val_shards = [os.path.join(data_dir, x) for x in glob.glob(val_pattern, root_dir=data_dir)]
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.prefetch_factor = prefetch_factor
         self.persistent_workers = persistent_workers
     def setup(self, stage=None):
         test_decoder = SamplerDecoder()
@@ -77,6 +79,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers = self.persistent_workers
+            prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
     def val_dataloader(self):
@@ -85,6 +88,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers = self.persistent_workers
+            prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
     def test_dataloader(self):
@@ -93,6 +97,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers = self.persistent_workers
+            prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
 
