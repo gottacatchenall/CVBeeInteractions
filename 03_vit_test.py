@@ -10,6 +10,7 @@ from src.model import VitClassifier
 from src.dataset import WebDatasetDataModule
 from src.simclr_transforms import simclr_transforms 
 
+
 torch.set_float32_matmul_precision('high')
 
 
@@ -21,7 +22,6 @@ def main(image_dir, log_path, args):
         data_dir = image_dir,
         batch_size = args.batch_size,
         num_workers= args.num_workers,
-        train_transform = simclr_transforms()
     )
 
     num_classes = 19 if args.species == "bees" else 158
