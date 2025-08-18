@@ -79,8 +79,8 @@ class VitClassifier(pl.LightningModule):
         self.valid_metrics = self.train_metrics.clone(prefix="valid_")
 
     def forward(self, x):
-        x =  self.image_model(x).pooler_output
-        #x = self.image_model(x).last_hidden_state[:,:,0]
+        with torch.no_grad():
+            x =  self.image_model(x).pooler_output
         x = self.embedding_model(x)
         x = self.classification_head(x)
         return x

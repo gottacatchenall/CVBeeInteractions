@@ -37,9 +37,8 @@ def main(image_dir, log_path, args):
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
 
     checkpoint_cb = AsyncTrainableCheckpoint(
-        dirpath = os.path.join(log_path, "checkpoints")
+        dirpath = os.path.join(logger.log_dir, "checkpoints")
     )
-
     num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
     gpus = torch.cuda.device_count()
 
