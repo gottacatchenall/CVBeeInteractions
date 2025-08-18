@@ -115,7 +115,7 @@ def main(args):
 
     species_names = species_names[10:]
     for species_name in species_names:
-        process_species_images(processor, model, base_path, args.img_dir, species_name, device, batch_size=args.batch_size)
+        process_species_images(processor, model, base_path, args.img_dir, species_name, device)
 
 
 if __name__=='__main__':
@@ -123,7 +123,6 @@ if __name__=='__main__':
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--img_dir', default='more_bees')
     parser.add_argument('--cluster', action='store_true')
-    parser.add_argument('--batch-size', type=int, default=16, help="Batch size for inference")
 
     args = parser.parse_args()  
     main(args)

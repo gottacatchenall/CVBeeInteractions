@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from transformers import AutoModel
+from transformers import AutoModel, AutoImageProcessor
 
 import pytorch_lightning as pl
 import torchmetrics
@@ -14,10 +14,13 @@ class VitClassifier(pl.LightningModule):
     def __init__(self, lr = 1e-3, gamma=0.95, num_classes=19):
         super().__init__()
         self.save_hyperparameters()
+        
+        """
         self.image_model = AutoModel.from_pretrained(
             "google/vit-base-patch16-224",
             local_files_only=True
         )
+        """
         # --- Freeze ViT layers  ---
         for param in self.image_model.embeddings.parameters():
             param.requires_grad = False
@@ -97,3 +100,33 @@ class VitClassifier(pl.LightningModule):
         }
 
 
+from src.dataset import WebDatasetDataModule
+
+species_data = WebDatasetDataModule(
+    data_dir = "./data/bombus_wds",
+    batch_size = 32,
+)
+
+num_classes = 19 if args.species == "bees" else 158
+
+species_data.setup('fit')
+dl = species_data.train_dataloader()
+x,y = next(iter(dl))
+x,y = x.to('mps'), y.to('mps')
+
+model_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
+processor = AutoImageProcessor.from_pretrained(
+    model_name
+)
+model = AutoModel.from_pretrained(
+    model_name, 
+)
+
+model.to('mps')
+
+with torch.no_grad():
+    outputs = model(x)
+
+pooled_output = outputs.pooler_output
+
+pooled_output

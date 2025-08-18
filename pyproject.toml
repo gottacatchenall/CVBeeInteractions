@@ -21,7 +21,10 @@ dependencies = [
     "torchmetrics>=1.8.1",
     "torchvision>=0.22.1",
     "tqdm>=4.67.1",
-    "transformers>=4.54.1",
+    "transformers",
     "webdataset>=1.0.2",
     "xgboost>=3.0.4",
 ]
+
+[tool.uv.sources]
+transformers = { git = "https://github.com/huggingface/transformers.git" }
