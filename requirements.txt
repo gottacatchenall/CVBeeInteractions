@@ -12,7 +12,7 @@ hf_xet==1.1.3+computecanada
 huggingface_hub==0.34.4+computecanada
 idna==3.10+computecanada
 jinja2==3.1.6+computecanada
-kornia==0.8.1
+kornia==0.7.2+computecanada
 kornia_rs==0.1.9+computecanada
 lightning==2.5.0+computecanada
 lightning_utilities==0.15.2+computecanada
