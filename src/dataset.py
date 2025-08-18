@@ -78,7 +78,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            persistent_workers = self.persistent_workers
+            persistent_workers = self.persistent_workers,
             prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
@@ -87,7 +87,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            persistent_workers = self.persistent_workers
+            persistent_workers = self.persistent_workers,
             prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
@@ -96,7 +96,7 @@ class WebDatasetDataModule(pl.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            persistent_workers = self.persistent_workers
+            persistent_workers = self.persistent_workers,
             prefetch_factor=self.prefetch_factor
             #collate_fn=collate_to_device,
         )
