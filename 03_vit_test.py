@@ -30,7 +30,7 @@ def main(image_dir, log_path, args):
 
     net = VitClassifier(
         lr=args.lr,
-        num_classes=num_classes
+        num_classes=num_classes,
         model_type = args.model
     )
 
