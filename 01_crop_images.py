@@ -51,7 +51,7 @@ def crop_image(image, bbox):
     return cropped_img
 
 
-def process_species_images(processor, model, base_path, img_dir, species_name, device, batch_size=16, outdir_name = "cropped_more_bombus"):
+def process_species_images(processor, model, base_path, img_dir, species_name, device, outdir_name = "cropped_more_bombus"):
     metadata_df = load_species_image_metadata(base_path, img_dir, species_name)
     
     image_paths = [os.path.join(base_path, image_path) for image_path in metadata_df.image]
@@ -67,51 +67,53 @@ def process_species_images(processor, model, base_path, img_dir, species_name, d
 
     for i,img_path in enumerate(image_paths):
         # Load images       
-        img = Image.open(img_path).convert("RGB")
+        try:
+            img = Image.open(img_path).convert("RGB")
 
-        inputs = processor(images=img, text=prompt, return_tensors="pt").to(device)
-        with torch.no_grad():
-            outputs = model(**inputs)
+            inputs = processor(images=img, text=prompt, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outputs = model(**inputs)
 
-        results = processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            text_threshold=0.3,
-            target_sizes=[img.size[::-1]]
-        )
+            results = processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                text_threshold=0.3,
+                target_sizes=[img.size[::-1]]
+            )
 
-        if len(results) > 0:
-            if len(results[0]["boxes"]) > 0:
-                box = results[0]["boxes"][0]
-                cropped_img = crop_image(img, box)
-                img_uuid = str(uuid.uuid4())
-                save_path = os.path.join(outdir_path, img_uuid + ".jpg")
-                cropped_img.save(save_path)
-                obj = {
-                    "path": save_path,
-                    "user_id": metadata_df["user_id"].iloc[i],
-                    "username": metadata_df["username"].iloc[i],
-                    "observation_id": metadata_df["user_id"].iloc[i],
-                }
-                metadata.append(obj)
+            if len(results) > 0:
+                if len(results[0]["boxes"]) > 0:
+                    box = results[0]["boxes"][0]
+                    cropped_img = crop_image(img, box)
+                    img_uuid = str(uuid.uuid4())
+                    save_path = os.path.join(outdir_path, img_uuid + ".jpg")
+                    cropped_img.save(save_path)
+                    obj = {
+                        "path": save_path,
+                        "user_id": metadata_df["user_id"].iloc[i],
+                        "username": metadata_df["username"].iloc[i],
+                        "observation_id": metadata_df["user_id"].iloc[i],
+                    }
+                    metadata.append(obj)
+        except: 
+            print(f"Failed with image {img_path}")
 
     df = pd.DataFrame(metadata)
     df.to_csv(os.path.join(outdir_path, "_metadata.csv"), index=False)
 
 def main(args):
-    
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages") if args.cluster else os.path.join("./")
  
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    print(f"Using device: {device}")
+    print(f"Using device: {device}")    
     
     model_id = "IDEA-Research/grounding-dino-base"
     processor = AutoProcessor.from_pretrained(model_id, local_files_only=True)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id, local_files_only=True).to(device)
-    #model = torch.compile(model)
-
 
     species_names = get_species_names(os.path.join(base_path, "data", args.img_dir))
+
+    species_names = species_names[10:]
     for species_name in species_names:
         process_species_images(processor, model, base_path, args.img_dir, species_name, device, batch_size=args.batch_size)
 
