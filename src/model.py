@@ -64,15 +64,16 @@ class VitClassifier(pl.LightningModule):
             #nn.ReLU(),
             #nn.Linear(64, 32),
         )
-        self.projection_head = nn.Sequential(
+
+        self.classification_head = nn.Sequential(
+            nn.Linear(128, num_classes)
+        )
+        
+        if use_supcon: 
+            self.projection_head = nn.Sequential(
             nn.Linear(128, 128)
         )
-
-        if use_supcon: 
-            self.classification_head = nn.Sequential(
-                nn.Linear(128, num_classes)
-            )
-            self.criterion_supcon = SupConLoss(temperature=temperature)
+        self.criterion_supcon = SupConLoss(temperature=temperature)
 
         self.transform = torch.nn.Sequential(
             K.RandomResizedCrop((224,224), scale=(0.2,1.0)),
