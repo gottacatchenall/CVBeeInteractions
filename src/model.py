@@ -101,6 +101,8 @@ class VitClassifier(pl.LightningModule):
         self.log("train_loss", loss, prog_bar=False)
         with torch.no_grad():
             batch_value = self.train_metrics(y_hat, y)
+            lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
+            batch_value["lr"] = lr
             self.log_dict(batch_value)
         return loss
     
@@ -117,6 +119,7 @@ class VitClassifier(pl.LightningModule):
             
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        """
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer,
             T_0 = self.hparams.T_0,
@@ -124,13 +127,14 @@ class VitClassifier(pl.LightningModule):
             eta_min = self.hparams.eta_min
         )
         
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
+                "lr_scheduler": {
                 "scheduler": scheduler,
                 "interval": "epoch",   # or "step"
                 "frequency": 1,
             },
+        """
+        return {
+            "optimizer": optimizer,
         }
 
 
