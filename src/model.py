@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from transformers import AutoModel, AutoImageProcessor
 from torchvision.transforms import v2
 
+from src.supervised_contrastive import SupConLoss
 import pytorch_lightning as pl
 import torchmetrics
 import kornia.augmentation as K
@@ -21,6 +22,8 @@ def image_embed_dim():
         "large": 1024,   # 303M Params
         "huge": 1280,    # 841M Params
     }
+
+
 # -------------------
 # Lightning Module
 # -------------------
@@ -32,6 +35,9 @@ class VitClassifier(pl.LightningModule):
             T_0 = 20,
             T_mult = 1,
             eta_min = 1e-4,
+            temperature=0.07,
+            use_supcon=True,
+            alpha=0.5,  # weight for combining SupCon + CE losses
             num_classes=19, 
             model_type="base"
     ):
@@ -69,6 +75,15 @@ class VitClassifier(pl.LightningModule):
             K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ).to("cuda")
 
+        # --- Losses ---
+        self.criterion_ce = nn.CrossEntropyLoss()
+        self.criterion_supcon = SupConLoss(temperature=temperature)
+
+        # --- Training options ---
+        self.use_supcon = use_supcon  # whether to use contrastive loss
+        self.alpha = alpha            # mixing factor between CE & SupCon
+
+
         self.train_metrics = torchmetrics.MetricCollection(
             {
                 "accuracy": torchmetrics.classification.Accuracy(
@@ -95,17 +110,50 @@ class VitClassifier(pl.LightningModule):
         return x, y
 
     def training_step(self, batch, batch_idx):
+        """
+        Training step: supports three modes
+        - CE only
+        - SupCon only
+        - Joint CE + SupCon
+        """
         x, y = batch
-        y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
+
+        if self.use_supcon:
+            # --- Case: contrastive training ---
+            bsz, n_views, C, H, W = x.shape
+            x = x.view(bsz * n_views, C, H, W)
+
+            embeddings, logits = self(x)                # embeddings & logits
+            embeddings = embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
+
+            # Contrastive loss
+            supcon_loss = self.criterion_supcon(embeddings, labels=y)
+
+            # Optional CE loss (on first view only)
+            ce_loss = self.criterion_ce(
+                logits[:bsz], y
+            )  # take first view’s logits
+
+            # Combine losses
+            loss = self.alpha * supcon_loss + (1 - self.alpha) * ce_loss
+
+            self.log("train_supcon_loss", supcon_loss, prog_bar=False)
+            self.log("train_ce_loss", ce_loss, prog_bar=False)
+            with torch.no_grad():
+                batch_value = self.train_metrics(logits[:bsz], y)
+                self.log_dict(batch_value)
+        else:
+            # --- Case: normal crossentropy training only ---
+            embeddings, logits = self(x)
+            loss = self.criterion_ce(logits, y)
+            with torch.no_grad():
+                batch_value = self.train_metrics(loss, y)
+                self.log_dict(batch_value)
+
         self.log("train_loss", loss, prog_bar=False)
-        with torch.no_grad():
-            batch_value = self.train_metrics(y_hat, y)
-            #lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
-            #batch_value["lr"] = lr
-            self.log_dict(batch_value)
-        return loss
     
+        return loss
+
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
