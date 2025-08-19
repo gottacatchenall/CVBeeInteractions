@@ -83,8 +83,8 @@ class VitClassifier(pl.LightningModule):
         self.transform = torch.nn.Sequential(
             K.RandomResizedCrop((224,224), scale=(min_crop_size, 1.0)),
             K.RandomHorizontalFlip(),
-            K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
-            K.RandomGrayscale(p=0.2),
+            #K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
+            #K.RandomGrayscale(p=0.2),
             K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ).to("cuda")
 
