@@ -162,7 +162,7 @@ class VitClassifier(pl.LightningModule):
             logits = self(x)
             loss = self.criterion_ce(logits, y)
             with torch.no_grad():
-                batch_value = self.train_metrics(loss, y)
+                batch_value = self.train_metrics(logits, y)
                 self.log_dict(batch_value)
 
         self.log("train_loss", loss, prog_bar=False)
