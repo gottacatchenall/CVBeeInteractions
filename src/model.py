@@ -59,16 +59,16 @@ class VitClassifier(pl.LightningModule):
             nn.Linear(image_model_output_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
+            #nn.ReLU(),
+            #nn.Linear(128, 64),
+            #nn.ReLU(),
+            #nn.Linear(64, 32),
         )
         self.projection_head = nn.Sequential(
-            nn.Linear(32, 32)
+            nn.Linear(128, 128)
         )
         self.classification_head = nn.Sequential(
-            nn.Linear(32, num_classes)
+            nn.Linear(128, num_classes)
         )
         self.transform = torch.nn.Sequential(
             K.RandomResizedCrop((224,224), scale=(0.2,1.0)),

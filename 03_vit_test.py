@@ -32,7 +32,8 @@ def main(image_dir, log_path, args):
     net = VitClassifier(
         lr=args.lr,
         num_classes=num_classes,
-        model_type = args.model
+        model_type = args.model,
+        use_supcon = args.contrastive,
     )
 
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--contrastive', action='store_true')
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--prefetch_factor', type=int, default=4)
     parser.add_argument('--persistent_workers', action='store_true')
