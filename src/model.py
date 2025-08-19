@@ -133,15 +133,16 @@ class VitClassifier(pl.LightningModule):
             
             img_embed = self.image_model(x).pooler_output
             
-            embeddings = self.projection_head(self.embedding_model(img_embed))
+            embeddings = self.embedding_model(img_embed) 
 
-            logits = self.classification_head(x) 
+            logits = self.classification_head(embeddings) 
             
-            embeddings = embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
+            proj_embeddings = self.projection_head(embeddings)
+            proj_embeddings = proj_embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
 
 
             # Contrastive loss
-            supcon_loss = self.criterion_supcon(embeddings, labels=y)
+            supcon_loss = self.criterion_supcon(proj_embeddings, labels=y)
 
             # Optional CE loss (on first view only)
             ce_loss = self.criterion_ce(
