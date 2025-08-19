@@ -64,6 +64,9 @@ class VitClassifier(pl.LightningModule):
             nn.ReLU(),
             nn.Linear(64, 32),
         )
+        self.projection_head = nn.Sequential(
+            nn.Linear(32, 32)
+        )
         self.classification_head = nn.Sequential(
             nn.Linear(32, num_classes)
         )
@@ -130,8 +133,7 @@ class VitClassifier(pl.LightningModule):
             
             img_embed = self.image_model(x).pooler_output
             
-            # TODO: there should be a projective head here 
-            embeddings = self.embedding_model(img_embed)
+            embeddings = self.projection_head(self.embedding_model(img_embed))
 
             logits = self.classification_head(x) 
             
