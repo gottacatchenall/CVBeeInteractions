@@ -29,6 +29,9 @@ class VitClassifier(pl.LightningModule):
             self, 
             lr = 1e-3, 
             gamma=0.95, 
+            T_0 = 20,
+            T_mult = 1,
+            eta_min = 1e-4,
             num_classes=19, 
             model_type="base"
     ):
@@ -106,18 +109,21 @@ class VitClassifier(pl.LightningModule):
         y_hat = self(x)
         with torch.no_grad():
             batch_value = self.valid_metrics(y_hat, y)
-            val_loss = F.cross_entropy(y_hat, y)
+            val_loss = F.cross_entropy(y_hat, y)    
+            lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
+            batch_value["lr"] = lr
             batch_value["valid_loss"] = val_loss
             self.log_dict(batch_value)
             
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-
-        # ExponentialLR scheduler
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            optimizer, gamma=self.hparams.gamma
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0 = self.hparams.T_0,
+            T_mult = self.hparams.T_mult,
+            eta_min = self.hparams.eta_min
         )
-
+        
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
