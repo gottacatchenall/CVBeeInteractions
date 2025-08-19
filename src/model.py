@@ -128,8 +128,11 @@ class VitClassifier(pl.LightningModule):
             x = x.view(bsz * n_views, C, H, W)
 
             
-            img_embed = self.image_model(x)
+            img_embed = self.image_model(x).pooler_output
+            
+            # TODO: there should be a projective head here 
             embeddings = self.embedding_model(img_embed)
+
             logits = self.classification_head(x) 
             
             embeddings = embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
