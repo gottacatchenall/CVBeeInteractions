@@ -101,8 +101,8 @@ class VitClassifier(pl.LightningModule):
         self.log("train_loss", loss, prog_bar=False)
         with torch.no_grad():
             batch_value = self.train_metrics(y_hat, y)
-            lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
-            batch_value["lr"] = lr
+            #lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
+            #batch_value["lr"] = lr
             self.log_dict(batch_value)
         return loss
     
@@ -112,8 +112,6 @@ class VitClassifier(pl.LightningModule):
         with torch.no_grad():
             batch_value = self.valid_metrics(y_hat, y)
             val_loss = F.cross_entropy(y_hat, y)    
-            lr = self.trainer.lr_scheduler_configs[0].scheduler.get_last_lr()[0]
-            batch_value["lr"] = lr
             batch_value["valid_loss"] = val_loss
             self.log_dict(batch_value)
             
