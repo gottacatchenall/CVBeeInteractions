@@ -14,4 +14,4 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index -r requirements.txt
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 03_vit_test.py --batch_size 256 --cluster --max_epochs 100 --species bees --lr 1e-3 --num_workers 4 --persistent_workers --prefetch_factor 8 --model huge
+srun python 03_vit_test.py --batch_size 256 --cluster --max_epochs 100 --species bees --lr 1e-3 --num_workers 4 --persistent_workers --prefetch_factor 8 --model huge 

@@ -34,6 +34,8 @@ def main(image_dir, log_path, args):
         num_classes=num_classes,
         model_type = args.model,
         use_supcon = args.contrastive,
+        augmentation= args.augmentation,
+        min_crop_size=args.min_crop_size
     )
 
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
@@ -63,6 +65,8 @@ def main(image_dir, log_path, args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--min_crop_size', type=float, default=0.7)
+    parser.add_argument('--augmentation', action='store_true')
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)

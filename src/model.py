@@ -35,16 +35,17 @@ class VitClassifier(pl.LightningModule):
             T_0 = 20,
             T_mult = 1,
             eta_min = 1e-4,
+            min_crop_size = 0.5,
             temperature=0.07,
             use_supcon=True,
             alpha=0.5,  # weight for combining SupCon + CE losses
-            num_classes=19, 
+            num_classes=19,
+            augmentation = True, 
             model_type="base"
     ):
         super().__init__()
         self.save_hyperparameters()
-        
-    
+            
         model_name = model_paths()[model_type]
         self.image_model = AutoModel.from_pretrained(
             model_name, 
@@ -68,15 +69,19 @@ class VitClassifier(pl.LightningModule):
         self.classification_head = nn.Sequential(
             nn.Linear(128, num_classes)
         )
-        
+
         if use_supcon: 
             self.projection_head = nn.Sequential(
             nn.Linear(128, 128)
         )
         self.criterion_supcon = SupConLoss(temperature=temperature)
 
+        self.resize = torch.nn.Sequential(
+            K.Resize((224,224))
+        )
+
         self.transform = torch.nn.Sequential(
-            K.RandomResizedCrop((224,224), scale=(0.2,1.0)),
+            K.RandomResizedCrop((224,224), scale=(min_crop_size, 1.0)),
             K.RandomHorizontalFlip(),
             K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
             K.RandomGrayscale(p=0.2),
@@ -111,14 +116,17 @@ class VitClassifier(pl.LightningModule):
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         x, y = batch
-        if self.trainer.training and self.use_supcon:
-            x1 = self.transform(x)  # GPU augment
-            x2 = self.transform(x)
-            x = torch.stack([x1, x2], dim=1)  # [bsz, 2, C, H, W]
-        elif self.trainer.training:
-            x = self.transform(x)
+        if self.hparams.augmentation:
+            if self.trainer.training and self.use_supcon:
+                x1 = self.transform(x)  # GPU augment
+                x2 = self.transform(x)
+                x = torch.stack([x1, x2], dim=1)  # [bsz, 2, C, H, W]
+            elif self.trainer.training:
+                x = self.transform(x)
+        else:
+            x = self.resize(x)
         return x, y
-    
+        
     def training_step(self, batch, batch_idx):
         """
         Training step: supports three modes
