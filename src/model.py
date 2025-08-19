@@ -67,9 +67,13 @@ class VitClassifier(pl.LightningModule):
         self.projection_head = nn.Sequential(
             nn.Linear(128, 128)
         )
-        self.classification_head = nn.Sequential(
-            nn.Linear(128, num_classes)
-        )
+
+        if use_supcon: 
+            self.classification_head = nn.Sequential(
+                nn.Linear(128, num_classes)
+            )
+            self.criterion_supcon = SupConLoss(temperature=temperature)
+
         self.transform = torch.nn.Sequential(
             K.RandomResizedCrop((224,224), scale=(0.2,1.0)),
             K.RandomHorizontalFlip(),
@@ -78,9 +82,7 @@ class VitClassifier(pl.LightningModule):
             K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ).to("cuda")
 
-        # --- Losses ---
         self.criterion_ce = nn.CrossEntropyLoss()
-        self.criterion_supcon = SupConLoss(temperature=temperature)
 
         # --- Training options ---
         self.use_supcon = use_supcon  # whether to use contrastive loss
