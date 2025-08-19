@@ -127,8 +127,13 @@ class VitClassifier(pl.LightningModule):
             bsz, n_views, C, H, W = x.shape
             x = x.view(bsz * n_views, C, H, W)
 
-            embeddings, logits = self(x)                # embeddings & logits
+            
+            img_embed = self.image_model(x)
+            embeddings = self.embedding_model(img_embed)
+            logits = self.classification_head(x) 
+            
             embeddings = embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
+
 
             # Contrastive loss
             supcon_loss = self.criterion_supcon(embeddings, labels=y)
@@ -148,7 +153,7 @@ class VitClassifier(pl.LightningModule):
                 self.log_dict(batch_value)
         else:
             # --- Case: normal crossentropy training only ---
-            embeddings, logits = self(x)
+            logits = self(x)
             loss = self.criterion_ce(logits, y)
             with torch.no_grad():
                 batch_value = self.train_metrics(loss, y)
