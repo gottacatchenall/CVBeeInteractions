@@ -105,10 +105,14 @@ class VitClassifier(pl.LightningModule):
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         x, y = batch
-        if self.trainer.training:
+        if self.trainer.training and self.use_supcon:
+            x1 = self.transform(x)  # GPU augment
+            x2 = self.transform(x)
+            x = torch.stack([x1, x2], dim=1)  # [bsz, 2, C, H, W]
+        elif self.trainer.training:
             x = self.transform(x)
         return x, y
-
+    
     def training_step(self, batch, batch_idx):
         """
         Training step: supports three modes
