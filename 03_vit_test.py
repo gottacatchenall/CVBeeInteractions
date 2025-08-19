@@ -23,7 +23,8 @@ def main(image_dir, log_path, args):
         batch_size = args.batch_size,
         num_workers= args.num_workers,
         persistent_workers = args.persistent_workers,
-        prefetch_factor = args.prefetch_factor
+        prefetch_factor = args.prefetch_factor,
+        species = args.species
     )
 
     num_classes = 19 if args.species == "bees" else 158
