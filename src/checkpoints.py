@@ -15,11 +15,10 @@ class AsyncTrainableCheckpoint(pl.Callback):
         epoch = trainer.current_epoch
         if (epoch + 1) % self.every_n_epochs != 0:
             return
-
-        # Collect only trainable parameters
+        
         trainable_state = {
-            k: v.cpu() for k, v in pl_module.state_dict().items()
-            if v.requires_grad
+            k: v.cpu() for k, v in pl_module.state_dict.items()
+            if "image_model" not in k
         }
 
         filename = os.path.join(

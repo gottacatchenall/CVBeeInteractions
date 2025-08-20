@@ -87,4 +87,3 @@ if __name__ == '__main__':
     log_path = os.path.join(base_path, "logs")
     main(image_dir, log_path, args)
 
-
