@@ -6,7 +6,6 @@ from lightning.pytorch.loggers import CSVLogger
 
 import pytorch_lightning as pl
 
-from src.model import VitClassifier
 from src.dataset import WebDatasetDataModule
 from src.checkpoints import AsyncTrainableCheckpoint 
 
