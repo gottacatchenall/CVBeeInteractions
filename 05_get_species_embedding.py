@@ -19,8 +19,8 @@ def get_num_classes(ckpt):
     return ckpt["classification_head.0.bias"].shape[0]
 
 
-def load_model(ckpt_path, num_classes):
-    vit = VitClassifier(num_classes=num_classes)
+def load_model(ckpt_path, num_classes, model_type):
+    vit = VitClassifier(num_classes=num_classes, model_type = model_type)
     vit = AsyncTrainableCheckpoint().load_trainable_checkpoint(vit, ckpt_path)
     return vit
 
@@ -85,7 +85,7 @@ def main(args):
     ckpt_filename =  "bombus.ckpt" if args.species == "bees" else "plant.ckpt"
     ckpt_path = os.path.join(base_path, ckpt_filename)
 
-    model = load_model(ckpt_path, num_classes)
+    model = load_model(ckpt_path, num_classes, args.model)
     model.to(device)
 
     class_dict = get_class_dict(image_dir, num_classes)
@@ -105,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--species', default='bees', choices=['plants', 'bees'])
+    parser.add_argument('--model', default='base', choices=['base', 'large', 'huge'])
     args = parser.parse_args()
     main(args)
 
