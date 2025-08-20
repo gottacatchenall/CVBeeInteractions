@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G      
-#SBATCH --time=00:15:00
+#SBATCH --time=01:30:00
 #SBATCH --output=%x-%j.out
 #SBATCH --job-name=InteractionTest
 

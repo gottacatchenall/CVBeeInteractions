@@ -314,7 +314,6 @@ class VitInteractionClassifier(pl.LightningModule):
         plant_embed, bee_embed = self.dual_embed(plant_img, bee_img)
         
         bee_logits = self.bee_classification_head(bee_embed)
-        
         bee_loss = self.criterion_ce(bee_logits, bi)
         
 
@@ -343,10 +342,36 @@ class VitInteractionClassifier(pl.LightningModule):
     
         return loss
 
-    """
+    
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
+        z, plant_img, bee_img = batch        
+
+        pi = z[:,0]
+        bi = z[:,1]
+
+        plant_embed, bee_embed = self.dual_embed(plant_img, bee_img)
+        
+        bee_logits = self.bee_classification_head(bee_embed)
+        bee_loss = self.criterion_ce(bee_logits, bi)
+    
+        plant_logits = self.plant_classification_head(plant_embed)
+        plant_loss = self.criterion_ce(plant_logits, pi)
+
+
+        int_e = torch.concat((plant_embed, bee_embed), dim=1)
+        int_logits = self.interaction_classification_head(int_e)
+
+        int_loss = self.criterion_ce(int_logits, self.metaweb[pi,bi])
+
+        lb, lp, li = self.hparams.lambda_bee, self.hparams.lambda_plant, self.hparams.lambda_int
+        loss = lb*bee_loss + lp*plant_loss + li*int_loss
+
+        with torch.no_grad():
+            batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
+            self.log_dict(batch_value)
+            self.log("val_loss", loss, prog_bar=False)
+
+        """
         with torch.no_grad():
             batch_value = self.plant_train_metrics(plant_logits, pi)
             self.log_dict(batch_value)
@@ -355,7 +380,7 @@ class VitInteractionClassifier(pl.LightningModule):
             batch_value = self.interaction_train_metrics(int_logits, self.metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("train_loss", loss, prog_bar=False)
-    """    
+        """
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
         return {
