@@ -17,7 +17,7 @@ class AsyncTrainableCheckpoint(pl.Callback):
             return
         
         trainable_state = {
-            k: v.cpu() for k, v in pl_module.state_dict.items()
+            k: v.cpu() for k, v in pl_module.state_dict().items()
             if "image_model" not in k
         }
 
