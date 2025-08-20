@@ -267,7 +267,7 @@ class VitInteractionClassifier(pl.LightningModule):
             },
             prefix="train_interaction",
         )
-        self.interaction_train_metrics = self.interaction_train_metrics.clone(prefix="valid_interaction")
+        self.interaction_valid_metrics = self.interaction_train_metrics.clone(prefix="valid_interaction")
         
         
 
@@ -318,7 +318,7 @@ class VitInteractionClassifier(pl.LightningModule):
         bee_loss = self.criterion_ce(bee_logits, bi)
         
 
-        plant_logits = self.plant_classification_head(bee_embed)
+        plant_logits = self.plant_classification_head(plant_embed)
         plant_loss = self.criterion_ce(plant_logits, pi)
 
 
