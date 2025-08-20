@@ -379,7 +379,8 @@ def main(args):
     net = VitInteractionClassifier(
         lr=args.lr,
         model_type = args.model,
-        min_crop_size=args.min_crop_size
+        min_crop_size=args.min_crop_size,
+        interactions_path=os.path.join(base_path, "interactions.csv")
     )
 
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
