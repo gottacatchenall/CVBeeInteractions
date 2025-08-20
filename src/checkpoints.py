@@ -38,6 +38,8 @@ class AsyncTrainableCheckpoint(pl.Callback):
         Only updates matching keys; frozen backbone remains untouched.
         """
         checkpoint = torch.load(ckpt_path, map_location="cpu")
+        
+        
         state_dict = model.state_dict()
         
         # Filter only keys that exist in the model

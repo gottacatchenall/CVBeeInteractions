@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 import argparse
 from src.model import VitClassifier
 from src.dataset import WebDatasetDataModule
+from src.checkpoints import AsyncTrainableCheckpoint 
 
     
 import webdataset as wds
@@ -15,13 +16,12 @@ import glob
 torch.set_float32_matmul_precision('high')
 
 def get_num_classes(ckpt):
-    return ckpt["state_dict"]["classification_head.2.bias"].shape[0]
+    return ckpt["classification_head.0.bias"].shape[0]
 
 
-def load_model(ckpt, num_classes):
-    num_classes = get_num_classes(ckpt)
+def load_model(ckpt_path, num_classes):
     vit = VitClassifier(num_classes=num_classes)
-    vit.load_state_dict(ckpt["state_dict"])
+    vit = AsyncTrainableCheckpoint().load_trainable_checkpoint(vit, ckpt_path)
     return vit
 
 def get_mean_embeddings(model, datamodule, num_classes, device):
@@ -80,12 +80,12 @@ def main(args):
     )
     species_data.setup('fit')
 
+    num_classes = 19 if args.species == "bees" else 158
+
     ckpt_filename =  "bombus.ckpt" if args.species == "bees" else "plant.ckpt"
     ckpt_path = os.path.join(base_path, ckpt_filename)
-    ckpt = torch.load(ckpt_path, map_location=device)
 
-    num_classes = get_num_classes(ckpt)
-    model = load_model(ckpt, num_classes)
+    model = load_model(ckpt_path, num_classes)
     model.to(device)
 
     class_dict = get_class_dict(image_dir, num_classes)
