@@ -181,7 +181,7 @@ class VitInteractionClassifier(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.metaweb = load_metaweb(interactions_path).long()
+        self.metaweb = load_metaweb(interactions_path).long().cuda()
 
         # ---------- Image Model  ----------
         model_name = model_paths()[model_type]
