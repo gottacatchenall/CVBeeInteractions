@@ -182,6 +182,7 @@ class VitInteractionClassifier(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.metaweb = load_metaweb(interactions_path).long().cuda()
+        self.onehot_metaweb = F.one_hot(self.metaweb).float()
 
         # ---------- Image Model  ----------
         model_name = model_paths()[model_type]
@@ -336,7 +337,7 @@ class VitInteractionClassifier(pl.LightningModule):
             self.log_dict(batch_value)
             batch_value = self.bee_train_metrics(bee_logits, bi)
             self.log_dict(batch_value)
-            batch_value = self.interaction_train_metrics(int_logits, self.metaweb[pi,bi])
+            batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("train_loss", loss, prog_bar=False)
     
@@ -432,3 +433,7 @@ if __name__ == '__main__':
     log_path = os.path.join(base_path, "logs")
     main(args)
 
+
+
+
+mw = load_metaweb("./data/interactions.csv")
