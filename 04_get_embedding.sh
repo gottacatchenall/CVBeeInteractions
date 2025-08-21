@@ -15,9 +15,9 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 04_get_embedding.py --species bees --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
+srun python 04_get_embeddings.py --species bees --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
 
 
 echo "Finished Bees."
 
-srun python 04_get_embedding.py --species plants --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
+srun python 04_get_embeddings.py --species plants --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
