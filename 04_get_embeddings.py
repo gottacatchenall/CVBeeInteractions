@@ -65,9 +65,9 @@ def main(args):
     dl = species_data.train_dataloader()
     for x,y in dl:
         x = x.to('cuda')
-        img_embed = net.image_model(x).pooler_output            
-        embeddings = net.embedding_model(img_embed) 
-        embeddings = embeddings.cpu()
+        with torch.no_grad():
+            embeddings = net.embedding_model(net.image_model(x).pooler_output) 
+            embeddings = embeddings.cpu()
 
         for (bi, classi) in enumerate(y):
             classname = idx2class[classi.item()]
