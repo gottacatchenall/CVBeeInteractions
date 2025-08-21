@@ -2,7 +2,7 @@
 #SBATCH --nodes 1             
 #SBATCH --gres=gpu:1     
 #SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=1  
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G      
 #SBATCH --time=00:30:00
 #SBATCH --output=%x-%j.out
@@ -15,8 +15,9 @@ pip install --no-index -r requirements.txt
 
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 04_get_embedding.py --species bees --cluster --model huge
+srun python 04_get_embedding.py --species bees --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
+
+
 echo "Finished Bees."
 
-srun python 05_get_embedding.py --species plants --cluster --model huge
-
+srun python 04_get_embedding.py --species plants --cluster --model huge --num_workers 4 --persistent_workers --prefetch_factor 8 
