@@ -1,10 +1,10 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from transformers import AutoModel, AutoImageProcessor
-from torchvision.transforms import v2
 
-from src.supervised_contrastive import SupConLoss
+from transformers import AutoModel
+from src.checkpoints import AsyncTrainableCheckpoint 
+
 import pytorch_lightning as pl
 import torchmetrics
 import kornia.augmentation as K
@@ -23,29 +23,19 @@ def image_embed_dim():
         "huge": 1280,    # 841M Params
     }
 
-
-# -------------------
-# Lightning Module
-# -------------------
 class VitClassifier(pl.LightningModule):
     def __init__(
             self, 
             lr = 1e-3, 
-            gamma=0.95, 
-            T_0 = 20,
-            T_mult = 1,
-            eta_min = 1e-4,
             min_crop_size = 0.5,
-            temperature=0.07,
-            use_supcon=True,
-            alpha=0.5,  # weight for combining SupCon + CE losses
+            embedding_dim=128,
             num_classes=19,
             augmentation = True, 
             model_type="base"
     ):
         super().__init__()
         self.save_hyperparameters()
-            
+
         model_name = model_paths()[model_type]
         self.image_model = AutoModel.from_pretrained(
             model_name, 
@@ -59,49 +49,30 @@ class VitClassifier(pl.LightningModule):
         self.embedding_model = nn.Sequential(
             nn.Linear(image_model_output_dim, 256),
             nn.ReLU(),
-            nn.Linear(256, 128),
-            #nn.ReLU(),
-            #nn.Linear(128, 64),
-            #nn.ReLU(),
-            #nn.Linear(64, 32),
+            nn.Linear(256, self.hparams.embedding_dim),
         )
 
         self.classification_head = nn.Sequential(
-            nn.Linear(128, num_classes)
-        )
-
-        if use_supcon: 
-            self.projection_head = nn.Sequential(
-            nn.Linear(128, 128)
-        )
-        self.criterion_supcon = SupConLoss(temperature=temperature)
-
-        self.resize = torch.nn.Sequential(
-            K.Resize((224,224))
+            nn.Linear(self.hparams.embedding_dim, self.hparams.num_classes)
         )
 
         self.transform = torch.nn.Sequential(
             K.RandomResizedCrop((224,224), scale=(min_crop_size, 1.0)),
             K.RandomHorizontalFlip(),
-            #K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
-            #K.RandomGrayscale(p=0.2),
+            K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
+            K.RandomGrayscale(p=0.2),
             K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ).to("cuda")
 
         self.criterion_ce = nn.CrossEntropyLoss()
 
-        # --- Training options ---
-        self.use_supcon = use_supcon  # whether to use contrastive loss
-        self.alpha = alpha            # mixing factor between CE & SupCon
-
-
         self.train_metrics = torchmetrics.MetricCollection(
             {
                 "accuracy": torchmetrics.classification.Accuracy(
                     task="multiclass", 
-                    num_classes=num_classes
+                    num_classes=self.hparams.num_classes
                 ),
-                "MAP": torchmetrics.classification.MulticlassPrecision(num_classes=num_classes, average='macro'),
+                "MAP": torchmetrics.classification.MulticlassPrecision(num_classes=self.hparams.num_classes, average='macro'),
             },
             prefix="train_",
         )
@@ -117,67 +88,19 @@ class VitClassifier(pl.LightningModule):
     def on_after_batch_transfer(self, batch, dataloader_idx):
         x, y = batch
         if self.hparams.augmentation:
-            if self.trainer.training and self.use_supcon:
-                x1 = self.transform(x)  # GPU augment
-                x2 = self.transform(x)
-                x = torch.stack([x1, x2], dim=1)  # [bsz, 2, C, H, W]
-            elif self.trainer.training:
                 x = self.transform(x)
         else:
             x = self.resize(x)
         return x, y
         
     def training_step(self, batch, batch_idx):
-        """
-        Training step: supports three modes
-        - CE only
-        - SupCon only
-        - Joint CE + SupCon
-        """
         x, y = batch
-
-        if self.use_supcon:
-            # --- Case: contrastive training ---
-            bsz, n_views, C, H, W = x.shape
-            x = x.view(bsz * n_views, C, H, W)
-
-            
-            img_embed = self.image_model(x).pooler_output
-            
-            embeddings = self.embedding_model(img_embed) 
-
-            logits = self.classification_head(embeddings) 
-            
-            proj_embeddings = self.projection_head(embeddings)
-            proj_embeddings = proj_embeddings.view(bsz, n_views, -1)  # [bsz, n_views, dim]
-
-
-            # Contrastive loss
-            supcon_loss = self.criterion_supcon(proj_embeddings, labels=y)
-
-            # Optional CE loss (on first view only)
-            ce_loss = self.criterion_ce(
-                logits[:bsz], y
-            )  # take first view’s logits
-
-            # Combine losses
-            loss = self.alpha * supcon_loss + (1 - self.alpha) * ce_loss
-
-            self.log("train_supcon_loss", supcon_loss, prog_bar=False)
-            self.log("train_ce_loss", ce_loss, prog_bar=False)
-            with torch.no_grad():
-                batch_value = self.train_metrics(logits[:bsz], y)
-                self.log_dict(batch_value)
-        else:
-            # --- Case: normal crossentropy training only ---
-            logits = self(x)
-            loss = self.criterion_ce(logits, y)
-            with torch.no_grad():
-                batch_value = self.train_metrics(logits, y)
-                self.log_dict(batch_value)
-
-        self.log("train_loss", loss, prog_bar=False)
-    
+        logits = self(x)
+        loss = self.criterion_ce(logits, y)
+        with torch.no_grad():
+            batch_value = self.train_metrics(logits, y)
+            self.log_dict(batch_value)
+            self.log("train_loss", loss, prog_bar=False)    
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -191,42 +114,7 @@ class VitClassifier(pl.LightningModule):
             
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-        """
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0 = self.hparams.T_0,
-            T_mult = self.hparams.T_mult,
-            eta_min = self.hparams.eta_min
-        )
-        
-                "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "epoch",   # or "step"
-                "frequency": 1,
-            },
-        """
         return {
             "optimizer": optimizer,
         }
 
-
-"""
-from src.model import VitClassifier
-from src.dataset import WebDatasetDataModule
-import src.dataset
-species_data = WebDatasetDataModule(
-    data_dir = "./data/bombus_wds",
-)
-species_data.setup('fit')
-dl = species_data.train_dataloader()
-net = VitClassifier(
-        num_classes=19,
-        model_type = "large"
-)        
-x,y = next(iter(dl))
-x = vit.image_model(x).pooler_output
-x = vit.embedding_model(x)
-x = vit.classification_head(x)
-yhat = vit(x)
-yhat.shape, y.shape
-"""
