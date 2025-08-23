@@ -19,6 +19,7 @@ dependencies = [
     "requests>=2.32.4",
     "scikit-learn>=1.7.0",
     "torch>=2.7.1",
+    "torcheval>=0.0.7",
     "torchmetrics>=1.8.1",
     "torchvision>=0.22.1",
     "tqdm>=4.67.1",

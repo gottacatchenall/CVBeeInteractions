@@ -8,7 +8,6 @@ from src.checkpoints import AsyncTrainableCheckpoint
 import pytorch_lightning as pl
 import torchmetrics
 import kornia.augmentation as K
-
 def model_paths():
     return {      
         "base": "facebook/dinov3-vitb16-pretrain-lvd1689m",     # 87M Params
@@ -31,6 +30,7 @@ class VitClassifier(pl.LightningModule):
             embedding_dim=128,
             num_classes=19,
             augmentation = True, 
+            num_epochs = 100,
             model_type="base"
     ):
         super().__init__()
@@ -114,7 +114,9 @@ class VitClassifier(pl.LightningModule):
             
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+      
+
         return {
             "optimizer": optimizer,
         }
-
+        

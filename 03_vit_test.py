@@ -33,8 +33,8 @@ def main(image_dir, log_path, args):
         lr=args.lr,
         num_classes=num_classes,
         model_type = args.model,
-        use_supcon = args.contrastive,
-        augmentation= args.augmentation,
+        #use_supcon = args.contrastive,
+        #augmentation= args.augmentation,
         min_crop_size=args.min_crop_size
     )
 
