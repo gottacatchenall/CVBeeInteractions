@@ -73,7 +73,6 @@ class PairedIterableDataset(IterableDataset):
         plant_iter = iter(self.plant_dataset)
         poll_iter = iter(self.poll_dataset)
         for plant_sample, poll_sample in zip(plant_iter, poll_iter):
-            # plant_sample and poll_sample are (img, label) tuples
             plant_img, plant_label = plant_sample
             poll_img, poll_label = poll_sample
             if self.pair_mask[plant_label, poll_label].item():
@@ -134,11 +133,11 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         self.train_mask = get_metaweb_train_mask(self.metaweb)
         self.test_mask = self.train_mask == False
 
-        self.bee_train_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.train_pattern)).batched(self.batch_size)
-        self.plant_train_dataset = self.make_dataset(os.path.join(self.plant_shard_dir, self.train_pattern)).batched(self.batch_size)
+        self.bee_train_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.train_pattern)) #.batched(self.batch_size)
+        self.plant_train_dataset = self.make_dataset(os.path.join(self.plant_shard_dir, self.train_pattern)) #.batched(self.batch_size)
 
-        self.bee_test_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.test_pattern)).batched(self.batch_size)
-        self.plant_test_dataset = self.make_dataset(os.path.join(self.plant_shard_dir, self.test_pattern)).batched(self.batch_size)
+        self.bee_test_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.test_pattern)) #.batched(self.batch_size)
+        self.plant_test_dataset = self.make_dataset(os.path.join(self.plant_shard_dir, self.test_pattern)) #.batched(self.batch_size)
 
 
     def train_dataloader(self):
@@ -149,6 +148,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         )
         return DataLoader(
             paired_dataset,
+            batch_size=self.batch_size,  # WebDataset already batches if you use .batched()
             num_workers=self.num_workers
         )
     
@@ -160,6 +160,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         )
         return DataLoader(
             paired_dataset,
+            batch_size=self.batch_size, 
             num_workers=self.num_workers
         )
 
@@ -173,8 +174,8 @@ class VitInteractionClassifier(pl.LightningModule):
             num_bees=19,
             num_plants = 158,
             interactions_path = "./data/interactions.csv",
-            lambda_bee = 0.25,
-            lambda_plant = 0.25,
+            lambda_bee = 0.5,
+            lambda_plant = 0.5,
             lambda_int = 1.0,
             embed_dim = 32,
             model_type="base"
@@ -336,7 +337,7 @@ class VitInteractionClassifier(pl.LightningModule):
             self.log_dict(batch_value)
             batch_value = self.bee_train_metrics(bee_logits, bi)
             self.log_dict(batch_value)
-            batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
+            batch_value = self.interaction_train_metrics(int_logits, self.metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("train_loss", loss, prog_bar=False)
     
@@ -367,7 +368,7 @@ class VitInteractionClassifier(pl.LightningModule):
         loss = lb*bee_loss + lp*plant_loss + li*int_loss
 
         with torch.no_grad():
-            batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
+            batch_value = self.interaction_valid_metrics(int_logits, self.metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("val_loss", loss, prog_bar=False)
 
