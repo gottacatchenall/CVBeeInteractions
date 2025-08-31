@@ -337,7 +337,7 @@ class VitInteractionClassifier(pl.LightningModule):
             self.log_dict(batch_value)
             batch_value = self.bee_train_metrics(bee_logits, bi)
             self.log_dict(batch_value)
-            batch_value = self.interaction_train_metrics(int_logits, self.metaweb[pi,bi])
+            batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("train_loss", loss, prog_bar=False)
     
@@ -368,7 +368,7 @@ class VitInteractionClassifier(pl.LightningModule):
         loss = lb*bee_loss + lp*plant_loss + li*int_loss
 
         with torch.no_grad():
-            batch_value = self.interaction_valid_metrics(int_logits, self.metaweb[pi,bi])
+            batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
             self.log_dict(batch_value)
             self.log("val_loss", loss, prog_bar=False)
 
