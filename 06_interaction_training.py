@@ -131,7 +131,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         self.train_mask = get_metaweb_train_mask(self.metaweb)
-        self.test_mask = self.train_mask == False
+        self.val_mask = self.train_mask == False
 
         self.bee_train_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.train_pattern)) #.batched(self.batch_size)
         self.plant_train_dataset = self.make_dataset(os.path.join(self.plant_shard_dir, self.train_pattern)) #.batched(self.batch_size)
@@ -152,11 +152,11 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             num_workers=self.num_workers
         )
     
-    def test_dataloader(self):
+    def val_dataloader(self):
         paired_dataset = PairedIterableDataset(
             self.plant_test_dataset,
             self.bee_test_dataset,
-            self.test_mask, 
+            self.val_mask, 
         )
         return DataLoader(
             paired_dataset,
@@ -207,16 +207,16 @@ class VitInteractionClassifier(pl.LightningModule):
         )
 
         # ---------- Bee Classification Model  ----------
-        self.bee_classification_head = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(embed_dim, num_bees)
-        )
+        #self.bee_classification_head = nn.Sequential(
+        #    nn.ReLU(),
+        #    nn.Linear(embed_dim, num_bees)
+        #)
 
         # ---------- Plant Classification Model  ----------
-        self.plant_classification_head = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(embed_dim, num_plants)
-        )
+        #self.plant_classification_head = nn.Sequential(
+        #    nn.ReLU(),
+        #    nn.Linear(embed_dim, num_plants)
+        #)
 
         # ---------- Interaction Classification Head  ----------
         self.interaction_classification_head = nn.Sequential(
@@ -335,8 +335,8 @@ class VitInteractionClassifier(pl.LightningModule):
             #batch_value = self.bee_train_metrics(bee_logits, bi)
             #self.log_dict(batch_value)
             batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
-            self.log_dict(batch_value)
-            self.log("train_loss", loss, prog_bar=False)
+            self.log_dict(batch_value, on_step=True, on_epoch=True)
+            self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True, logger=True)
     
         return loss
 
@@ -366,8 +366,8 @@ class VitInteractionClassifier(pl.LightningModule):
 
         with torch.no_grad():
             batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
-            self.log_dict(batch_value)
-            self.log("val_loss", loss, prog_bar=False)
+            self.log_dict(batch_value, on_step=False, on_epoch=True)
+            self.log("val_loss", loss, on_step=False, on_epoch=True, logger=True, prog_bar=False)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
