@@ -335,8 +335,8 @@ class VitInteractionClassifier(pl.LightningModule):
             #batch_value = self.bee_train_metrics(bee_logits, bi)
             #self.log_dict(batch_value)
             batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
-            self.log_dict(batch_value, on_step=True, on_epoch=True)
-            self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True, logger=True)
+            self.log_dict(batch_value, on_step=True, on_epoch=True, sync_dist=True)
+            self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True, logger=True, sync_dist=True)
     
         return loss
 
@@ -366,8 +366,8 @@ class VitInteractionClassifier(pl.LightningModule):
 
         with torch.no_grad():
             batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
-            self.log_dict(batch_value, on_step=False, on_epoch=True)
-            self.log("val_loss", loss, on_step=False, on_epoch=True, logger=True, prog_bar=False)
+            self.log_dict(batch_value, on_step=False, on_epoch=True, sync_dist=True)
+            self.log("val_loss", loss, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
