@@ -7,23 +7,21 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torchmetrics
 from torchvision import transforms
-import torchvision
 import pytorch_lightning as pl
 from lightning.pytorch.loggers import CSVLogger
 import io
-from transformers import AutoModel, AutoImageProcessor
+from transformers import AutoModel
 import glob
 import itertools
 import webdataset as wds
 import kornia.augmentation as K
-import itertools
 from PIL import Image
 from src.checkpoints import AsyncTrainableCheckpoint 
 import pandas as pd
 from torch.utils.data import IterableDataset, DataLoader
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 torch.set_float32_matmul_precision('high')
+device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
 def model_paths():
     return {      
@@ -88,10 +86,25 @@ def load_metaweb(path):
         mw[j,i] = int
     return mw
 
-def get_metaweb_train_mask(mw, train_prop=0.8):
-    shape = mw.shape
-    train_mask = (torch.randperm(shape[0]*shape[1]) < int(train_prop*shape[0]*shape[1])).bool().view(shape)
-    return train_mask
+class MetawebMaskMaker():
+    pass
+
+class ZeroShotMaskMaker(MetawebMaskMaker):
+    def __init__(self, metaweb, bee_holdouts, plant_holdouts):
+        self.metaweb = metaweb
+        self.bee_holdouts = bee_holdouts
+        self.plant_holdouts = plant_holdouts
+
+    def make_mask(self, metaweb):
+        # metaweb is a 2D matrix [num_plants, num_bees] of 0/1 labels
+        num_plants, num_bees = metaweb.shape
+        train_mask = torch.ones((num_plants, num_bees), dtype=torch.bool, device=metaweb.device)
+        # Mask out any pair where either the plant OR the bee is a holdout
+        if self.plant_holdouts is not None and len(self.plant_holdouts) > 0:
+            train_mask[self.plant_holdouts, :] = False
+        if self.bee_holdouts is not None and len(self.bee_holdouts) > 0:
+            train_mask[:, self.bee_holdouts] = False
+        return train_mask
 
 class PlantPollinatorDataModule(pl.LightningDataModule):
     def __init__(
@@ -104,12 +117,14 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         val_pattern = "val-*.tar",
         batch_size=32,
         num_workers=4,
+        mask_maker: MetawebMaskMaker = None,
     ):
         super().__init__()
         self.plant_shard_dir = plant_shard_dir
         self.poll_shard_dir = poll_shard_dir
 
         self.metaweb = load_metaweb(interactions_path)
+        self.mask_maker = mask_maker
 
         self.train_pattern = train_pattern
         self.test_pattern = test_pattern
@@ -130,7 +145,11 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         ).map(decoder)
 
     def setup(self, stage=None):
-        self.train_mask = get_metaweb_train_mask(self.metaweb)
+        # Build masks
+        if self.mask_maker is not None:
+            self.train_mask = self.mask_maker.make_mask(self.metaweb)
+        else:
+            self.train_mask = torch.ones_like(self.metaweb, dtype=torch.bool)
         self.val_mask = self.train_mask == False
 
         self.bee_train_dataset = self.make_dataset(os.path.join(self.poll_shard_dir, self.train_pattern)) #.batched(self.batch_size)
@@ -182,8 +201,7 @@ class VitInteractionClassifier(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.metaweb = load_metaweb(interactions_path).long().cuda()
-        self.onehot_metaweb = F.one_hot(self.metaweb).cuda()
+        self.metaweb = load_metaweb(interactions_path).long().to(device)
 
         # ---------- Image Model  ----------
         model_name = model_paths()[model_type]
@@ -232,7 +250,7 @@ class VitInteractionClassifier(pl.LightningModule):
             K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
             K.RandomGrayscale(p=0.2),
             K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
-        ).to("cuda")
+        ).to(device)
 
 
         self.criterion_ce = nn.CrossEntropyLoss()
@@ -263,8 +281,8 @@ class VitInteractionClassifier(pl.LightningModule):
 
         self.interaction_train_metrics = torchmetrics.MetricCollection(
             {
-                "MAP": torchmetrics.classification.BinaryAveragePrecision(),
-                "ROCAUC": torchmetrics.classification.BinaryAUROC(),
+                "MAP": torchmetrics.classification.MulticlassAveragePrecision(num_classes=2, average='macro'),
+                "ROCAUC": torchmetrics.classification.MulticlassAUROC(num_classes=2, average='macro'),
             },
             prefix="train_interaction",
         )
@@ -272,12 +290,11 @@ class VitInteractionClassifier(pl.LightningModule):
         
         
 
-    def forward(self, x):
-        with torch.no_grad():
-            x =  self.image_model(x).pooler_output
-        x = self.embedding_model(x)
-        x = self.classification_head(x)
-        return x
+    def forward(self, plant_img, bee_img):
+        plant_embed, bee_embed = self.dual_embed(plant_img, bee_img)
+        int_e = torch.concat((plant_embed, bee_embed), dim=1)
+        logits = self.interaction_classification_head(int_e)
+        return logits
     
     def single_embed(self, x):
         x =  self.image_model(x).pooler_output
@@ -287,18 +304,14 @@ class VitInteractionClassifier(pl.LightningModule):
         return self.single_embed(x), self.single_embed(y)
 
     def classify_plant(self, x):
-        x = self.embed(x)
-        x = self.plant_classification_head(x)
+        x = self.single_embed(x)
         return x
     
     def classify_bee(self, x):
-        x = self.embed(x)
-        x = self.bee_classification_head(x)
+        x = self.single_embed(x)
         return x
     def classify_interaction(self, x, y):
-        x = self.embed(x)
-        x = self.interaction_classification_head(x)
-        return x
+        return self.forward(x, y)
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         x, y, z = batch
@@ -313,28 +326,16 @@ class VitInteractionClassifier(pl.LightningModule):
         bi = z[:,1]
 
         plant_embed, bee_embed = self.dual_embed(plant_img, bee_img)
-        
-        #bee_logits = self.bee_classification_head(bee_embed)
-        #bee_loss = self.criterion_ce(bee_logits, bi)
-
-        #plant_logits = self.plant_classification_head(plant_embed)
-        #plant_loss = self.criterion_ce(plant_logits, pi)
-
 
         int_e = torch.concat((plant_embed, bee_embed), dim=1)
 
         int_logits = self.interaction_classification_head(int_e)
         int_loss = self.criterion_ce(int_logits, self.metaweb[pi,bi])
         loss = int_loss
-        #lb, lp, li = self.hparams.lambda_bee, self.hparams.lambda_plant, self.hparams.lambda_int
-        #loss = lb*bee_loss + lp*plant_loss + li*int_loss
 
         with torch.no_grad():
-            #batch_value = self.plant_train_metrics(plant_logits, pi)
-            #self.log_dict(batch_value)
-            #batch_value = self.bee_train_metrics(bee_logits, bi)
-            #self.log_dict(batch_value)
-            batch_value = self.interaction_train_metrics(int_logits, self.onehot_metaweb[pi,bi])
+            probs = F.softmax(int_logits, dim=1)
+            batch_value = self.interaction_train_metrics(probs, self.metaweb[pi,bi])
             self.log_dict(batch_value, on_step=True, on_epoch=True, sync_dist=True)
             self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True, logger=True, sync_dist=True)
     
@@ -348,24 +349,16 @@ class VitInteractionClassifier(pl.LightningModule):
         bi = z[:,1]
 
         plant_embed, bee_embed = self.dual_embed(plant_img, bee_img)
-        
-        #bee_logits = self.bee_classification_head(bee_embed)
-        #bee_loss = self.criterion_ce(bee_logits, bi)
-    
-        #plant_logits = self.plant_classification_head(plant_embed)
-        #plant_loss = self.criterion_ce(plant_logits, pi)
-
 
         int_e = torch.concat((plant_embed, bee_embed), dim=1)
         int_logits = self.interaction_classification_head(int_e)
 
         int_loss = self.criterion_ce(int_logits, self.metaweb[pi,bi])
         loss = int_loss
-        #lb, lp, li = self.hparams.lambda_bee, self.hparams.lambda_plant, self.#hparams.lambda_int
-        #loss = lb*bee_loss + lp*plant_loss + li*int_loss
 
         with torch.no_grad():
-            batch_value = self.interaction_valid_metrics(int_logits, self.onehot_metaweb[pi,bi])
+            probs = F.softmax(int_logits, dim=1)
+            batch_value = self.interaction_valid_metrics(probs, self.metaweb[pi,bi])
             self.log_dict(batch_value, on_step=False, on_epoch=True, sync_dist=True)
             self.log("val_loss", loss, on_step=False, on_epoch=True, logger=True, prog_bar=False, sync_dist=True)
 
@@ -376,18 +369,62 @@ class VitInteractionClassifier(pl.LightningModule):
         }
 
 
+def predict_interaction(net, plant_img, bee_img):
+    plant_embed, bee_embed = net.dual_embed(plant_img, bee_img)
+    int_e = torch.concat((plant_embed, bee_embed), dim=1)
+    int_logits = net.interaction_classification_head(int_e)
+    return int_logits
+
+def predict_interactions(net, loader):
+    summed_interactions = torch.zeros(net.metaweb.shape)
+    int_counts = torch.zeros(net.metaweb.shape)
+    for batch in loader:
+        z, plant_img, bee_img = batch
+        pi = z[:,0]
+        bi = z[:,1]
+        int_logits = predict_interaction(net, plant_img, bee_img)
+        int_softmax = F.softmax(int_logits, dim=1)
+        summed_interactions[pi,bi] += int_softmax
+        int_counts[pi,bi] += 1
+    return summed_interactions / int_counts
+    
+    
+
+
 def main(args):
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
     log_path = os.path.join(base_path, "logs")
     bee_dir = "bombus_wds" 
     plant_dir = "plant_wds" 
 
+    num_bee_holdouts, num_plant_holdouts = args.num_bee_holdouts, args.num_plant_holdouts
+
+    metaweb_path = os.path.join(base_path, "interactions.csv")
+    metaweb = load_metaweb(metaweb_path).long()
+    
+    # Build random holdouts by index
+    plant_indices = torch.arange(metaweb.shape[0])
+    bee_indices = torch.arange(metaweb.shape[1])
+    if num_plant_holdouts > 0:
+        plant_holdouts = plant_indices[torch.randperm(len(plant_indices))[:num_plant_holdouts]]
+    else:
+        plant_holdouts = torch.tensor([], dtype=torch.long)
+    if num_bee_holdouts > 0:
+        bee_holdouts = bee_indices[torch.randperm(len(bee_indices))[:num_bee_holdouts]]
+    else:
+        bee_holdouts = torch.tensor([], dtype=torch.long)
+
     species_data = PlantPollinatorDataModule(
         plant_shard_dir=os.path.join(base_path, plant_dir),
         poll_shard_dir=os.path.join(base_path, bee_dir),
-        interactions_path=os.path.join(base_path, "interactions.csv"),
-        batch_size=128,
+        interactions_path=metaweb_path,
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
+        mask_maker=ZeroShotMaskMaker(
+            metaweb=metaweb,
+            bee_holdouts=bee_holdouts,
+            plant_holdouts=plant_holdouts
+        )
     )
 
     net = VitInteractionClassifier(
@@ -397,18 +434,31 @@ def main(args):
         interactions_path=os.path.join(base_path, "interactions.csv")
     )
 
-    logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME"))
+    logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME") or "InteractionTest")
 
     checkpoint_cb = AsyncTrainableCheckpoint(
         dirpath = os.path.join(logger.log_dir, "checkpoints")
     )
-    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES"))
-    gpus = torch.cuda.device_count()
+    # Configure accelerator/devices
+    slurm_nodes = os.environ.get("SLURM_JOB_NUM_NODES")
+    num_nodes = int(slurm_nodes) if slurm_nodes is not None else 1
+    if torch.cuda.is_available():
+        accelerator = "gpu"
+        devices = torch.cuda.device_count()
+        strategy = "ddp" if devices and devices > 1 or num_nodes > 1 else "auto"
+    elif torch.backends.mps.is_available():
+        accelerator = "mps"
+        devices = 1
+        strategy = "auto"
+    else:
+        accelerator = "cpu"
+        devices = 1
+        strategy = "auto"
 
     trainer = pl.Trainer(
-        accelerator="gpu",
-        devices=gpus,
-        strategy='ddp',
+        accelerator=accelerator,
+        devices=devices,
+        strategy=strategy,
         profiler="simple",
         logger=logger,
         enable_checkpointing=False,   # Turn off default ckpt
@@ -420,6 +470,7 @@ def main(args):
 
     trainer.fit(net, species_data)
 
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -429,6 +480,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--num_bee_holdouts', type=int, default=2)
+    parser.add_argument('--num_plant_holdouts', type=int, default=10)
     parser.add_argument('--contrastive', action='store_true')
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--prefetch_factor', type=int, default=4)
@@ -445,9 +498,5 @@ if __name__ == '__main__':
     image_dir = os.path.join(base_path, data_dir)
     log_path = os.path.join(base_path, "logs")
     main(args)
-
-
-
-
 
 
