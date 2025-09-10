@@ -212,6 +212,10 @@ class VitInteractionClassifier(pl.LightningModule):
         # Freeze ViT layers 
         for param in self.image_model.parameters():
             param.requires_grad = False
+            
+        # Unfreeze last transformer block
+        for param in self.image_model.encoder.layer[-1].parameters():
+            param.requires_grad = True
         
         # ---------- Shared Embedding Model  ----------
         self.embedding_model = nn.Sequential(
@@ -219,7 +223,9 @@ class VitInteractionClassifier(pl.LightningModule):
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, embed_dim),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, embed_dim),
             #nn.ReLU(),
             #nn.Linear(64, 32),
         )
@@ -239,7 +245,15 @@ class VitInteractionClassifier(pl.LightningModule):
         # ---------- Interaction Classification Head  ----------
         self.interaction_classification_head = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(2*embed_dim, 2)
+            nn.Linear(2*embed_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 2)
         )
 
 
