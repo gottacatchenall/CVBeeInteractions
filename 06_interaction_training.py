@@ -212,9 +212,9 @@ class VitInteractionClassifier(pl.LightningModule):
         # Freeze ViT layers 
         for param in self.image_model.parameters():
             param.requires_grad = False
-            
+
         # Unfreeze last transformer block
-        for param in self.image_model.encoder.layer[-1].parameters():
+        for param in self.image_model.layer[-1].parameters():
             param.requires_grad = True
         
         # ---------- Shared Embedding Model  ----------
