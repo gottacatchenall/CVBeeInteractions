@@ -98,7 +98,7 @@ class ZeroShotMaskMaker(MetawebMaskMaker):
     def make_mask(self, metaweb):
         # metaweb is a 2D matrix [num_plants, num_bees] of 0/1 labels
         num_plants, num_bees = metaweb.shape
-        train_mask = torch.ones((num_plants, num_bees), dtype=torch.bool, device=metaweb.device)
+        train_mask = torch.ones((num_plants, num_bees), dtype=torch.bool)
         # Mask out any pair where either the plant OR the bee is a holdout
         if self.plant_holdouts is not None and len(self.plant_holdouts) > 0:
             train_mask[self.plant_holdouts, :] = False
