@@ -187,17 +187,18 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
 
 class VitInteractionClassifier(pl.LightningModule):
     def __init__(
-            self, 
-            lr = 1e-3, 
-            min_crop_size = 0.5,
-            num_bees=19,
-            num_plants = 158,
-            interactions_path = "./data/interactions.csv",
-            lambda_bee = 0.5,
-            lambda_plant = 0.5,
-            lambda_int = 1.0,
-            embed_dim = 32,
-            model_type="base"
+        self, 
+        lr = 1e-3, 
+        min_crop_size = 0.5,
+        num_bees=19,
+        num_plants = 158,
+        interactions_path = "./data/interactions.csv",
+        lambda_bee = 0.5,
+        lambda_plant = 0.5,
+        lambda_int = 1.0,
+        embed_dim = 128,
+        num_vit_unfrozen_layers = 2,
+        model_type="base"
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -214,33 +215,17 @@ class VitInteractionClassifier(pl.LightningModule):
             param.requires_grad = False
 
         # Unfreeze last transformer block
-        for param in self.image_model.layer[-1].parameters():
+        for param in self.image_model.layer[-1*num_vit_unfrozen_layers:].parameters():
             param.requires_grad = True
         
         # ---------- Shared Embedding Model  ----------
         self.embedding_model = nn.Sequential(
             nn.Linear(image_embed_dim()[model_type], 256),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, embed_dim),
-            #nn.ReLU(),
-            #nn.Linear(64, 32),
+            nn.Linear(256, embed_dim)
         )
-
-        # ---------- Bee Classification Model  ----------
-        #self.bee_classification_head = nn.Sequential(
-        #    nn.ReLU(),
-        #    nn.Linear(embed_dim, num_bees)
-        #)
-
-        # ---------- Plant Classification Model  ----------
-        #self.plant_classification_head = nn.Sequential(
-        #    nn.ReLU(),
-        #    nn.Linear(embed_dim, num_plants)
-        #)
 
         # ---------- Interaction Classification Head  ----------
         self.interaction_classification_head = nn.Sequential(
@@ -445,6 +430,7 @@ def main(args):
         lr=args.lr,
         model_type = args.model,
         min_crop_size=args.min_crop_size,
+        num_vit_unfrozen_layers=args.num_unfrozen,
         interactions_path=os.path.join(base_path, "interactions.csv")
     )
 
@@ -496,6 +482,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--num_bee_holdouts', type=int, default=2)
     parser.add_argument('--num_plant_holdouts', type=int, default=10)
+    parser.add_argument('--num_unfrozen', type=int, default=2)
     parser.add_argument('--contrastive', action='store_true')
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--prefetch_factor', type=int, default=4)
