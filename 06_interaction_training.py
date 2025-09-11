@@ -202,7 +202,7 @@ class VitInteractionClassifier(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.metaweb = load_metaweb(interactions_path).long()
+        self.metaweb = load_metaweb(interactions_path).long().to(device)
 
         # ---------- Image Model  ----------
         model_name = model_paths()[model_type]
@@ -420,7 +420,7 @@ def main(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         mask_maker=ZeroShotMaskMaker(
-            metaweb=metaweb,
+            metaweb=metaweb.to(device),
             bee_holdouts=bee_holdouts,
             plant_holdouts=plant_holdouts
         )
