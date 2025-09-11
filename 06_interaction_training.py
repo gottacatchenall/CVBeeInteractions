@@ -220,7 +220,7 @@ class VitInteractionClassifier(pl.LightningModule):
         
         # ---------- Shared Embedding Model  ----------
         self.embedding_model = nn.Sequential(
-            nn.Linear(image_embed_dim()[model_type], 256),
+            nn.Linear(image_embed_dim()[model_type], 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
