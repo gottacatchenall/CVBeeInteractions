@@ -11,8 +11,6 @@ import glob
 import io
 import json
 
-from src.util_funcs import get_plant_name2labels, get_bee_name2labels
-
 def load_json(path):
     with open(path, 'r') as f:
         dict = json.load(f)
