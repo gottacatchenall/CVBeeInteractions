@@ -4,9 +4,9 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G      
-#SBATCH --time=01:30:00
+#SBATCH --time=00:30:00
 #SBATCH --output=%x-%j.out
-#SBATCH --job-name=BeeTest
+#SBATCH --job-name=InteractionTest
 
 module load python/3.13
 virtualenv --no-download $SLURM_TMPDIR/env
@@ -14,4 +14,4 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index -r requirements.txt
 export TORCH_NCCL_ASYNC_HANDLING=1
 
-srun python 03_vit_test.py --batch_size 256 --cluster --max_epochs 100 --species bees --lr 1e-3 --num_workers 4 --persistent_workers --prefetch_factor 8 --model huge --augmentation --min_crop_size 0.8
+srun python 04_fit.py --cluster --persistent_workers --max_epochs 10 --lr 3e-4 --num_workers 4 --model huge --batch_size 16 --bag_size 16 --bags_per_pair 16 --toy

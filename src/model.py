@@ -1,122 +1,216 @@
 import torch
-from torch import nn
+import os
+import argparse
+
+
+import torch.nn as nn
+import pytorch_lightning as pl
+import numpy as np
+import pandas as pd
 import torch.nn.functional as F
 
+from torch.utils.data import DataLoader
 from transformers import AutoModel
-from src.checkpoints import AsyncTrainableCheckpoint 
+from collections import defaultdict
 
-import pytorch_lightning as pl
-import torchmetrics
-import kornia.augmentation as K
-def model_paths():
-    return {      
-        "base": "facebook/dinov3-vitb16-pretrain-lvd1689m",     # 87M Params
-        "large": "facebook/dinov3-vitl16-pretrain-lvd1689m",    # 303M Params
-        "huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m", # 841M Params
-    }
-
-def image_embed_dim():
-    return {      
-        "base": 768,     # 87M Params
-        "large": 1024,   # 303M Params
-        "huge": 1280,    # 841M Params
-    }
-
-class VitClassifier(pl.LightningModule):
-    def __init__(
-            self, 
-            lr = 1e-3, 
-            min_crop_size = 0.5,
-            embedding_dim=128,
-            num_classes=19,
-            augmentation = True, 
-            num_epochs = 100,
-            model_type="base"
-    ):
+class AttentionPooling(nn.Module):
+    def __init__(self, embed_dim, hidden_dim=256):
         super().__init__()
-        self.save_hyperparameters()
-
-        model_name = model_paths()[model_type]
-        self.image_model = AutoModel.from_pretrained(
-            model_name, 
-            local_files_only=True
+        self.attention = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1)
         )
-        # --- Freeze ViT layers  ---
-        for param in self.image_model.parameters():
-            param.requires_grad = False
-
-        image_model_output_dim = image_embed_dim()[model_type]
-        self.embedding_model = nn.Sequential(
-            nn.Linear(image_model_output_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, self.hparams.embedding_dim),
-        )
-
-        self.classification_head = nn.Sequential(
-            nn.Linear(self.hparams.embedding_dim, self.hparams.num_classes)
-        )
-
-        self.transform = torch.nn.Sequential(
-            K.RandomResizedCrop((224,224), scale=(min_crop_size, 1.0)),
-            K.RandomHorizontalFlip(),
-            K.ColorJitter(0.4,0.4,0.4,0.1, p=0.8),
-            K.RandomGrayscale(p=0.2),
-            K.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
-        ).to("cuda")
-
-        self.criterion_ce = nn.CrossEntropyLoss()
-
-        self.train_metrics = torchmetrics.MetricCollection(
-            {
-                "accuracy": torchmetrics.classification.Accuracy(
-                    task="multiclass", 
-                    num_classes=self.hparams.num_classes
-                ),
-                "MAP": torchmetrics.classification.MulticlassPrecision(num_classes=self.hparams.num_classes, average='macro'),
-            },
-            prefix="train_",
-        )
-        self.valid_metrics = self.train_metrics.clone(prefix="valid_")
 
     def forward(self, x):
-        with torch.no_grad():
-            x =  self.image_model(x).pooler_output
-        x = self.embedding_model(x)
-        x = self.classification_head(x)
-        return x
+        """
+        x: [N, M, D]  (N=batch_size, M=#instances in bag, D=embedding_dim)
+        returns: [N, D] (weighted sum of embeddings)
+        """
+        weights = self.attention(x)          # [N, M, 1]
+        weights = torch.softmax(weights, dim=1)
+        pooled = torch.sum(weights * x, dim=1)
+        return pooled
 
-    def on_after_batch_transfer(self, batch, dataloader_idx):
-        x, y = batch
-        if self.hparams.augmentation:
-                x = self.transform(x)
-        else:
-            x = self.resize(x)
-        return x, y
-        
+
+class InteractionPredictor(pl.LightningModule):
+    def __init__(
+        self, 
+        lr=3e-4,
+        model_type="base",
+        embed_dim = 128
+    ):
+        super().__init__()
+
+        # ---- Setup Backbone --- #
+        model_paths = {
+            "base": "facebook/dinov3-vitb16-pretrain-lvd1689m",
+            "large": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+            "huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m",
+        }
+        self.backbone = AutoModel.from_pretrained(model_paths[model_type], local_files_only=True)
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+        embed_dims = {"base": 768, "large": 1024, "huge": 1280}
+
+        self.embed_dim = embed_dim
+
+
+         # ---- Embedding head ----
+        self.embedding_model = nn.Sequential(
+            nn.Linear(embed_dims[model_type], 256),
+            nn.ReLU(),
+            nn.Linear(256, embed_dim),
+        )
+
+        # ---- Attention pooling ----
+        self.att_pool = AttentionPooling(self.embed_dim)
+
+        # ---- Final classifier ----
+        self.head = nn.Sequential(
+            nn.LayerNorm(self.embed_dim),
+            nn.Linear(self.embed_dim, 1)
+        )
+
+        self.lr = lr
+        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.val_outputs = []
+
+    def forward(self, plant_bag, bee_bag):
+        """
+        plant_bag: [N, B, C, H, W]
+        bee_bag:   [N, B, C, H, W]
+        """
+        N, B, C, H, W = plant_bag.shape
+        device = plant_bag.device
+
+        # Merge bags into one batch for the backbone
+        all_imgs = torch.cat([plant_bag, bee_bag], dim=1)  # [N, 2B, C, H, W]
+        flat_imgs = all_imgs.view(N * 2 * B, C, H, W)
+
+        # ViT forward 
+        outputs = self.backbone(flat_imgs)
+        feats = outputs.pooler_output
+
+        # Reduce dim
+        feats = self.embedding_model(feats)
+
+        # Reshape back into bags
+        feats = feats.view(N, 2 * B, self.embed_dim)  # [N, 2B, D]
+
+        # Attention pooling across image embeddings
+        pooled = self.att_pool(feats)  # [N, D]
+
+        # Final prediction
+        logits = self.head(pooled).squeeze(-1)  # [N]
+        return logits
+
+    def shared_step(self, batch, batch_idx):
+        # batch is a list/tuple of N items from PairedBagDataset, but when using DataLoader with batch_size=N,
+        # a collated batch will have each field stacked automatically.
+
+        plant_ids, plant_bags, bee_ids, bee_bags, labels = batch
+
+        # shapes:
+        # plant_bags: [batch_size, B, C, H, W]
+        # labels: [batch_size] or [batch_size, 1]
+        logits = self.forward(plant_bags, bee_bags)
+        labels = labels.float()
+        loss = self.loss_fn(logits, labels)
+        preds = torch.sigmoid(logits)
+        return loss, logits, preds, labels, plant_ids, bee_ids
+
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.criterion_ce(logits, y)
-        with torch.no_grad():
-            batch_value = self.train_metrics(logits, y)
-            self.log_dict(batch_value)
-            self.log("train_loss", loss, prog_bar=False)    
+        loss, _, _, _, _, _ = self.shared_step(batch, batch_idx)
+        self.log("train/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        with torch.no_grad():
-            batch_value = self.valid_metrics(y_hat, y)
-            val_loss = F.cross_entropy(y_hat, y)    
-            batch_value["valid_loss"] = val_loss
-            self.log_dict(batch_value)
-            
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        loss, logits, preds, labels, plant_ids, bee_ids = self.shared_step(batch, batch_idx)
+        self.log("val/loss", loss, prog_bar=False, on_epoch=True)
+        self.val_outputs.append({
+            "loss": loss.detach(),
+            "preds": preds.cpu(),
+            "logits": logits.detach().cpu(),
+            "labels": labels.cpu(),
+            "plants": plant_ids.cpu(),
+            "bees": bee_ids.cpu(),
+        })
+
+    def on_validation_epoch_end(self):
+        # aggregate per-species accuracy
+        plant_correct, plant_total = defaultdict(int), defaultdict(int)
+        bee_correct, bee_total = defaultdict(int), defaultdict(int)
+
+        for out in self.val_outputs:
+            preds, labels = out["preds"], out["labels"]
+            plants, bees = out["plants"], out["bees"]
+            for p, b, y, yhat in zip(plants, bees, labels, preds):
+                correct = int(y == yhat)
+                plant_total[p.item()] += 1
+                bee_total[b.item()] += 1
+                plant_correct[p.item()] += correct
+                bee_correct[b.item()] += correct
+
+        # log average per-species accuracy
+        if plant_total:
+            accs = [plant_correct[k] / plant_total[k] for k in plant_total]
+            self.log("val_plant_acc_mean", np.mean(accs))
+        if bee_total:
+            accs = [bee_correct[k] / bee_total[k] for k in bee_total]
+            self.log("val_bee_acc_mean", np.mean(accs))
+
+        log_dir = os.path.join(self.logger.log_dir, "per_species")
+        os.makedirs(log_dir, exist_ok=True)
+
+        plant_df = pd.DataFrame([
+            {"plant_id": k, "acc": plant_correct[k] / plant_total[k], "n": plant_total[k]}
+            for k in plant_total
+        ])
+        bee_df = pd.DataFrame([
+            {"bee_id": k, "acc": bee_correct[k] / bee_total[k], "n": bee_total[k]}
+            for k in bee_total
+        ])
+
+        plant_df.to_csv(os.path.join(log_dir, f"val_plants_epoch{self.current_epoch}.csv"), index=False)
+        bee_df.to_csv(os.path.join(log_dir, f"val_bees_epoch{self.current_epoch}.csv"), index=False)
+
+        # aggregate predictions across validation
+        plant_ids_all, bee_ids_all, probs_all = [], [], []
+        for out in self.val_outputs:
+            logits = F.softmax(out["logits"], dim=0)  # [batch, 2]
+            probs = logits #logits[:, 1]  # probability of "interaction"
+            plant_ids_all.extend(out["plants"].tolist())
+            bee_ids_all.extend(out["bees"].tolist())
+            probs_all.extend(probs.cpu().tolist())
+
+        # --- Convert to long-form dataframe ---
+        df = pd.DataFrame({
+            "plant_id": plant_ids_all,
+            "bee_id": bee_ids_all,
+            "interaction_prob": probs_all,
+        })
       
 
-        return {
-            "optimizer": optimizer,
-        }
-        
+        # Reorder columns
+        df = df[["bee_id", "plant_id", "interaction_prob"]]
+
+        # --- Save CSV ---
+        log_dir = os.path.join(self.logger.log_dir, "species_probs")
+        os.makedirs(log_dir, exist_ok=True)
+        csv_path = os.path.join(log_dir, f"val_probs_epoch{self.current_epoch}.csv")
+        df.to_csv(csv_path, index=False)
+
+        print(f"[Epoch {self.current_epoch}] Wrote interaction probabilities to {csv_path}")
+
+        self.val_outputs.clear()  
+
+    def configure_optimizers(self):
+        optim = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        return optim
+
+
+
+
+
