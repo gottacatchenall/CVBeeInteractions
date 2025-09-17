@@ -5,7 +5,7 @@ import torch
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader
-from src.dataset import InteractionDataset, ZeroShotMaskMaker
+from src.dataset import InteractionDataset, ZeroShotMaskMaker, PlantPollinatorDataModule
 from src.model import InteractionPredictor
 from lightning.pytorch.loggers import CSVLogger
 
@@ -19,50 +19,15 @@ def setup_data(base_path, args, toy=False):
     bee_labels_path = os.path.join(base_path, "bee_labels.json")
     interaction_path = os.path.join(base_path, "interactions.csv")
 
-
-    mask = ZeroShotMaskMaker(
-        plant_labels_path,
-        bee_labels_path,
-        holdout_bees=args.holdout_bees,
-        holdout_plants=args.holdout_plants
-    )
-
-    train_dataset = InteractionDataset(
+    dm = PlantPollinatorDataModule(
         plant_dir,
         bee_dir,
         plant_labels_path,
         bee_labels_path,
         interaction_path,
-        mask,
-        split = "train"
+        args
     )
-
-    val_dataset = InteractionDataset(
-        plant_dir,
-        bee_dir,
-        plant_labels_path,
-        bee_labels_path,
-        interaction_path,
-        mask,
-        split = "val"
-    )
-
-    train_loader = DataLoader(
-        train_dataset, 
-        batch_size = args.batch_size, 
-        num_workers = args.num_workers,
-        #prefetch_factor = args.prefetch_factor,
-        #persistent_workers = args.persistent_workers
-    )
-    val_loader = DataLoader(
-        val_dataset, 
-        batch_size = args.batch_size,
-        num_workers = args.num_workers,
-        #prefetch_factor = args.prefetch_factor,
-        #persistent_workers = args.persistent_workers
-    )
-
-    return train_loader, val_loader
+    return dm
 
 def setup_trainer_args():
     # Configure accelerator/devices
@@ -86,8 +51,7 @@ def setup_trainer_args():
 def main(args):
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
 
-    
-    train_loader, val_loader = setup_data(base_path, args)
+    datamodule = setup_data(base_path, args)
 
     model = InteractionPredictor(
         lr=args.lr, 
@@ -106,7 +70,7 @@ def main(args):
         logger = logger,
         max_epochs = args.max_epochs,
     )
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, datamodule)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
