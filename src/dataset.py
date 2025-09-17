@@ -165,6 +165,10 @@ class InteractionDataset(IterableDataset):
         return metaweb
 
     def __iter__(self):
+        plant_loaders = {k: cycle(v) for k, v in self.plant_loaders.items()}
+        bee_loaders   = {k: cycle(v) for k, v in self.bee_loaders.items()}
+
+
         # --- Worker sharding ---
         #worker_info = torch.utils.data.get_worker_info()
         #if worker_info is None:
@@ -201,8 +205,8 @@ class InteractionDataset(IterableDataset):
             else:
                 p, b = next(pos_iter)
 
-            plant_img, _ = next(self.plant_loaders[p])        
-            bee_img, _ = next(self.bee_loaders[b])
+            plant_img, _ = next(plant_loaders[p])        
+            bee_img, _ = next(bee_loaders[b])
 
             yield p, b, plant_img, bee_img, self.metaweb[p, b]
 
