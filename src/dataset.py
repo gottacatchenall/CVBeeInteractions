@@ -152,7 +152,7 @@ class InteractionDataset(IterableDataset):
             )
             for name in name2labels.keys()
         }
-        loaders = {k: cycle(wds.WebLoader(v, batch_size=self.n_per_pair, drop_last=True)) for k, v in datasets.items()}
+        loaders = {k: wds.WebLoader(v, batch_size=self.n_per_pair, drop_last=True) for k, v in datasets.items()}
         return loaders
 
     def load_metaweb(self, interaction_path):
