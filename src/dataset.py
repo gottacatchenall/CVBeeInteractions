@@ -248,7 +248,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         
         self.batch_size = args.batch_size
         self.num_workers = args.num_workers
-        self.prefetch_factor = args.prefetch_factor,
+        self.prefetch_factor = args.prefetch_factor
         self.persistent_workers = args.persistent_workers
         
     def setup(self, stage=None):
