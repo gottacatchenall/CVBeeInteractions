@@ -10,8 +10,8 @@ from src.model import InteractionPredictor
 from lightning.pytorch.loggers import CSVLogger
 
 def setup_data(base_path, args, toy=False):
-    plant_dir = "toy_plant_wds" if toy else "plant_img"
-    bee_dir = "toy_bee_wds" if toy else "bombus_img"
+    plant_dir = "toy_plant_wds" if toy else "plant_wds"
+    bee_dir = "toy_bee_wds" if toy else "bee_wds"
 
     plant_dir = os.path.join(base_path, plant_dir)
     bee_dir = os.path.join(base_path, bee_dir)
@@ -51,15 +51,15 @@ def setup_data(base_path, args, toy=False):
         train_dataset, 
         batch_size = args.batch_size, 
         num_workers = args.num_workers,
-        prefetch_factor = args.prefetch_factor,
-        persistent_workers = args.persistent_workers
+        #prefetch_factor = args.prefetch_factor,
+        #persistent_workers = args.persistent_workers
     )
     val_loader = DataLoader(
         val_dataset, 
         batch_size = args.batch_size,
         num_workers = args.num_workers,
-        prefetch_factor = args.prefetch_factor,
-        persistent_workers = args.persistent_workers
+        #prefetch_factor = args.prefetch_factor,
+        #persistent_workers = args.persistent_workers
     )
 
     return train_loader, val_loader
@@ -126,3 +126,40 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args)
 
+"""
+base_path = "./data"
+plant_dir = os.path.join(base_path, "plant_wds")
+bee_dir = os.path.join(base_path, "bee_wds")
+plant_labels_path = os.path.join(base_path, "plant_labels.json")
+bee_labels_path = os.path.join(base_path, "bee_labels.json")
+interaction_path = os.path.join(base_path, "interactions.csv")
+
+
+mask = ZeroShotMaskMaker(
+    plant_labels_path,
+    bee_labels_path,
+    holdout_bees=2,
+    holdout_plants=10
+)
+
+train_dataset = PairedDataset(
+    plant_dir,
+    bee_dir,
+    plant_labels_path,
+    bee_labels_path,
+    interaction_path,
+    mask,
+    split = "train"
+)
+
+train_loader = DataLoader(
+    train_dataset, 
+    batch_size = 2
+)
+
+it = iter(train_loader)
+b = next(it)
+
+b[2].shape
+
+"""

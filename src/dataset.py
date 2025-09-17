@@ -22,6 +22,26 @@ def load_json(path):
     return dict
 
 
+class SamplerDecoder():
+    def __init__(self, transform=None):
+        if transform == None:
+            self.transform = v2.Compose([
+            v2.ToTensor(),
+            v2.Resize((224, 224)),
+#            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225))
+        ])
+        else:
+            self.transform = transform
+        
+    def __call__(self, sample):
+        meta, img_bytes = sample
+        img = Image.open(io.BytesIO(img_bytes))
+        img = self.transform(img)
+        label = torch.tensor(meta["label"], dtype=torch.long)
+        return img, label
+
+
 class ZeroShotMaskMaker:
     def __init__(
         self, 
@@ -65,14 +85,12 @@ class ZeroShotMaskMaker:
 
     def is_val_pair(self, plant_id, bee_id):
         if self.strict:
-            # Zero-shot: must mix train × held-out
-            return ((plant_id in self.holdout_plants and bee_id in self.train_bees) or
-                    (bee_id in self.holdout_bees and plant_id in self.train_plants))
+            return (plant_id in self.holdout_plants and bee_id in self.holdout_bees)
         else:
             # Any pair with a held-out species
             return (plant_id in self.holdout_plants) or (bee_id in self.holdout_bees)
 
-
+"""
 class InteractionDataset(IterableDataset):
     def load_metaweb(self, interaction_path):
         int_df = pd.read_csv(interaction_path)
@@ -149,40 +167,48 @@ class InteractionDataset(IterableDataset):
         return torch.stack([self.transform(decode_image(p)) for p in plant_paths]), torch.stack([self.transform(decode_image(b)) for b in bee_paths])
 
     def __iter__(self):
+        # --- Worker sharding ---
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            worker_id, num_workers = 0, 1
+        else:
+            worker_id, num_workers = worker_info.id, worker_info.num_workers
+
         # Shuffled copies each epoch
         pos = self.pos_pair.copy()
         neg = self.neg_pair.copy()
         random.shuffle(pos)
         random.shuffle(neg)
 
-        # Cycle within each class; choose class with p=0.5 per sample
+        # Shard pairs across workers
+        pos = pos[worker_id::num_workers]
+        neg = neg[worker_id::num_workers]
+
+        # Cycle within each class
         pos_iter = cycle(pos) if len(pos) > 0 else iter(())
         neg_iter = cycle(neg) if len(neg) > 0 else iter(())
 
-        # Define an epoch length; one pass over all unique pairs on average
+        # Define epoch length: one pass over all unique pairs (for this worker)
         total = len(pos) + len(neg)
 
-        for _ in range(total):
-            take_pos = random.random() < 0.5
+        # Pre-sample which indices should be positive (vectorized, avoids Python RNG in loop)
+        take_pos_mask = torch.rand(total) < 0.5
+
+        for take_pos in take_pos_mask:
             if take_pos and len(pos) > 0:
                 p, b = next(pos_iter)
-                p_img, b_img = self.sample_images(p,b)
-                yield p, b, p_img, b_img, self.metaweb[p,b]
             elif len(neg) > 0:
                 p, b = next(neg_iter)
-                p_img, b_img = self.sample_images(p,b)
-                yield p, b, p_img, b_img, self.metaweb[p,b]
             else:
-                # Fallback if one side is empty
                 p, b = next(pos_iter)
-                p_img, b_img = self.sample_images(p,b)
-                yield p, b, p_img, b_img, self.metaweb[p,b]
-            
 
+            p_img, b_img = self.sample_images(p, b)
+            yield p, b, p_img, b_img, self.metaweb[p, b]
 
 
 """
-class PairedDataset(IterableDataset):
+
+class InteractionDataset(IterableDataset):
     def __init__(
         self,
         plant_dir,
@@ -199,6 +225,9 @@ class PairedDataset(IterableDataset):
         self.bee_dir = bee_dir
         self.plant_name2label = load_json(plant_labels_path)
         self.bee_name2label   = load_json(bee_labels_path)
+        self.bee_labels = [x for x in self.bee_name2label.values()]
+        self.plant_labels = [x for x in self.plant_name2label.values()]
+
         self.metaweb = self.load_metaweb(interaction_path)
 
         self.plant_ids = list(self.plant_name2label.values())
@@ -210,6 +239,19 @@ class PairedDataset(IterableDataset):
 
         self.plant_loaders = self.get_loaders(plant_dir, self.plant_name2label)
         self.bee_loaders   = self.get_loaders(bee_dir, self.bee_name2label)
+
+        all_pairs = [(p, b) for p in self.plant_labels for b in self.bee_labels]
+        if split == "train":
+            self.pairs = [(p, b) for (p, b) in all_pairs if self.mask.is_train_pair(p, b)]
+        elif split == "val":
+            self.pairs = [(p, b) for (p, b) in all_pairs if self.mask.is_val_pair(p, b)]
+        else:
+            raise ValueError(f"Unknown split: {split}")
+        
+        # --- Split pairs into pos and negative ---
+        self.pos_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 1]
+        self.neg_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 0]
+
 
     def get_loaders(self, dir, name2labels):
         decoder = SamplerDecoder()
@@ -226,7 +268,7 @@ class PairedDataset(IterableDataset):
             )
             for name in name2labels.keys()
         }
-        loaders = {k: wds.WebLoader(v, batch_size=None) for k, v in datasets.items()}
+        loaders = {k: wds.WebLoader(v, batch_size=self.n_per_pair) for k, v in datasets.items()}
         return loaders
 
     def load_metaweb(self, interaction_path):
@@ -239,16 +281,60 @@ class PairedDataset(IterableDataset):
         return metaweb
 
     def __iter__(self):
+        # --- Worker sharding ---
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:
             worker_id, num_workers = 0, 1
         else:
             worker_id, num_workers = worker_info.id, worker_info.num_workers
 
-        # shard species pairs
-        pairs = [(p, b) for p in self.plant_ids for b in self.bee_ids]
-        pairs = pairs[worker_id::num_workers]
+        # Shuffled copies each epoch
+        pos = self.pos_pair.copy()
+        neg = self.neg_pair.copy()
+        random.shuffle(pos)
+        random.shuffle(neg)
 
+        # Shard pairs across workers
+        pos = pos[worker_id::num_workers]
+        neg = neg[worker_id::num_workers]
+
+        # Cycle within each class
+        pos_iter = cycle(pos) if len(pos) > 0 else iter(())
+        neg_iter = cycle(neg) if len(neg) > 0 else iter(())
+
+        # Define epoch length: one pass over all unique pairs (for this worker)
+        total = len(pos) + len(neg)
+
+        # Pre-sample which indices should be positive (vectorized, avoids Python RNG in loop)
+        take_pos_mask = torch.rand(total) < 0.5
+
+        for take_pos in take_pos_mask:
+            
+            if take_pos and len(pos) > 0:
+                p, b = next(pos_iter)
+            elif len(neg) > 0:
+                p, b = next(neg_iter)
+            else:
+                p, b = next(pos_iter)
+
+
+            plant_iter = iter(self.plant_loaders[p])
+            bee_iter   = iter(self.bee_loaders[b])
+
+            try:
+                plant_img, _ = next(plant_iter)
+            except StopIteration:
+                plant_iter = iter(self.plant_loaders[p])
+                plant_img, _ = next(plant_iter)
+            try:
+                bee_img, _ = next(bee_iter)
+            except StopIteration:
+                bee_iter = iter(self.bee_loaders[b])
+                bee_img, _ = next(bee_iter)
+
+            yield p, b, plant_img, bee_img, self.metaweb[p, b]
+
+        """
         for plant_id, bee_id in pairs:
             if self.split == "train" and not self.mask.is_train_pair(plant_id, bee_id):
                 continue
@@ -271,5 +357,6 @@ class PairedDataset(IterableDataset):
                     bee_iter = iter(self.bee_loaders[bee_id])
                     bee_img, _ = next(bee_iter)
 
-                yield plant_id, plant_img, bee_id, bee_img, self.metaweb[plant_id, bee_id]
-"""
+                yield plant_id, bee_id, plant_img, bee_img, self.metaweb[plant_id, bee_id]
+        """
+
