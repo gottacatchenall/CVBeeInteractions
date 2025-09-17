@@ -2,7 +2,6 @@ import torch
 import os
 import argparse
 
-
 import torch.nn as nn
 import pytorch_lightning as pl
 import numpy as np
@@ -12,25 +11,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import AutoModel
 from collections import defaultdict
-
-class AttentionPooling(nn.Module):
-    def __init__(self, embed_dim, hidden_dim=256):
-        super().__init__()
-        self.attention = nn.Sequential(
-            nn.Linear(embed_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, 1)
-        )
-
-    def forward(self, x):
-        """
-        x: [N, M, D]  (N=batch_size, M=#instances in bag, D=embedding_dim)
-        returns: [N, D] (weighted sum of embeddings)
-        """
-        weights = self.attention(x)          # [N, M, 1]
-        weights = torch.softmax(weights, dim=1)
-        pooled = torch.sum(weights * x, dim=1)
-        return pooled
 
 
 class InteractionPredictor(pl.LightningModule):
@@ -52,21 +32,17 @@ class InteractionPredictor(pl.LightningModule):
         for p in self.backbone.parameters():
             p.requires_grad = False
 
-        embed_dims = {"base": 768, "large": 1024, "huge": 1280}
-
+        backbone_dims = {"base": 768, "large": 1024, "huge": 1280}
+        self.backbone_dim = backbone_dims[model_type]
         self.embed_dim = embed_dim
 
 
          # ---- Embedding head ----
         self.embedding_model = nn.Sequential(
-            nn.Linear(embed_dims[model_type], 256),
+            nn.Linear(2*self.backbone_dim, 256),
             nn.ReLU(),
             nn.Linear(256, embed_dim),
         )
-
-        # ---- Attention pooling ----
-        self.att_pool = AttentionPooling(self.embed_dim)
-
         # ---- Final classifier ----
         self.head = nn.Sequential(
             nn.LayerNorm(self.embed_dim),
@@ -75,6 +51,7 @@ class InteractionPredictor(pl.LightningModule):
 
         self.lr = lr
         self.loss_fn = nn.BCEWithLogitsLoss()
+
         self.val_outputs = []
 
     def forward(self, plant_bag, bee_bag):
@@ -82,39 +59,41 @@ class InteractionPredictor(pl.LightningModule):
         plant_bag: [N, B, C, H, W]
         bee_bag:   [N, B, C, H, W]
         """
-        N, B, C, H, W = plant_bag.shape
-        device = plant_bag.device
+        B, N, C, H, W = plant_bag.shape
 
         # Merge bags into one batch for the backbone
-        all_imgs = torch.cat([plant_bag, bee_bag], dim=1)  # [N, 2B, C, H, W]
-        flat_imgs = all_imgs.view(N * 2 * B, C, H, W)
+
+        b = plant_bag.view(B * N, C, H, W)
+        p = bee_bag.view(B * N, C, H, W)
 
         # ViT forward 
-        outputs = self.backbone(flat_imgs)
-        feats = outputs.pooler_output
-
-        # Reduce dim
-        feats = self.embedding_model(feats)
+        b_e = self.backbone(b).pooler_output
+        p_e = self.backbone(p).pooler_output
 
         # Reshape back into bags
-        feats = feats.view(N, 2 * B, self.embed_dim)  # [N, 2B, D]
+        b_e = b_e.view(B, N, self.backbone_dim)
+        p_e = p_e.view(B, N, self.backbone_dim)
 
-        # Attention pooling across image embeddings
-        pooled = self.att_pool(feats)  # [N, D]
+        # Mean pooling 
+        pooled_b_e = torch.mean(b_e, dim=1)
+        pooled_p_e = torch.mean(p_e, dim=1)
+
+        # Concat bee and plant features
+        e = torch.concat([pooled_b_e, pooled_p_e], dim=1)
+
+        # Reduce dim
+        e2 = self.embedding_model(e)
 
         # Final prediction
-        logits = self.head(pooled).squeeze(-1)  # [N]
+        logits = self.head(e2).flatten()
         return logits
 
     def shared_step(self, batch, batch_idx):
         # batch is a list/tuple of N items from PairedBagDataset, but when using DataLoader with batch_size=N,
         # a collated batch will have each field stacked automatically.
 
-        plant_ids, plant_bags, bee_ids, bee_bags, labels = batch
+        plant_ids, bee_ids, plant_bags, bee_bags, labels = batch
 
-        # shapes:
-        # plant_bags: [batch_size, B, C, H, W]
-        # labels: [batch_size] or [batch_size, 1]
         logits = self.forward(plant_bags, bee_bags)
         labels = labels.float()
         loss = self.loss_fn(logits, labels)

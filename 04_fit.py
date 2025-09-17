@@ -5,14 +5,13 @@ import torch
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader
-from src.dataset import PairedBagDataset, ZeroShotMaskMaker
+from src.dataset import InteractionDataset, ZeroShotMaskMaker
 from src.model import InteractionPredictor
 from lightning.pytorch.loggers import CSVLogger
 
 def setup_data(base_path, args, toy=False):
-
-    plant_dir = "toy_plant_wds" if toy else "plant_wds"
-    bee_dir = "toy_bee_wds" if toy else "bee_wds"
+    plant_dir = "toy_plant_wds" if toy else "plant_img"
+    bee_dir = "toy_bee_wds" if toy else "bombus_img"
 
     plant_dir = os.path.join(base_path, plant_dir)
     bee_dir = os.path.join(base_path, bee_dir)
@@ -20,28 +19,32 @@ def setup_data(base_path, args, toy=False):
     bee_labels_path = os.path.join(base_path, "bee_labels.json")
     interaction_path = os.path.join(base_path, "interactions.csv")
 
-    mask = ZeroShotMaskMaker(158,19)
-    train_dataset = PairedBagDataset(
-        plant_dir,
-        bee_dir,
+
+    mask = ZeroShotMaskMaker(
         plant_labels_path,
         bee_labels_path,
-        interaction_path,
-        mask,
-        bag_size = args.bag_size,
-        samples_per_pair = args.bags_per_pair,
-        split = "train",
+        holdout_bees=args.holdout_bees,
+        holdout_plants=args.holdout_plants
     )
-    val_dataset = PairedBagDataset(
+
+    train_dataset = InteractionDataset(
         plant_dir,
         bee_dir,
         plant_labels_path,
         bee_labels_path,
         interaction_path,
         mask,
-        bag_size = args.bag_size,
-        samples_per_pair = args.bags_per_pair,
-        split = "val",
+        split = "train"
+    )
+
+    val_dataset = InteractionDataset(
+        plant_dir,
+        bee_dir,
+        plant_labels_path,
+        bee_labels_path,
+        interaction_path,
+        mask,
+        split = "val"
     )
 
     train_loader = DataLoader(
@@ -82,6 +85,8 @@ def setup_trainer_args():
 
 def main(args):
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
+
+    
     train_loader, val_loader = setup_data(base_path, args)
 
     model = InteractionPredictor(
@@ -107,9 +112,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=3e-4)
     parser.add_argument('--max_epochs', type=int, default=100)
-    parser.add_argument('--bag_size', type=int, default=8)
-    parser.add_argument('--bags_per_pair', type=int, default=16)
+    parser.add_argument('--samples_per_pair', type=int, default=16)
     parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--holdout_bees', default=0.1)
+    parser.add_argument('--holdout_plants', default=0.1)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--cluster', action='store_true')
     parser.add_argument('--toy', action='store_true')
@@ -119,5 +125,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
-
 
