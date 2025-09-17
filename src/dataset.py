@@ -148,11 +148,11 @@ class InteractionDataset(IterableDataset):
                 )
                 .decode()
                 .to_tuple("json", "jpg")
-                .map(decoder)   # -> (img_tensor, label)
+                .map(decoder) # -> (img_tensor, label)
             )
             for name in name2labels.keys()
         }
-        loaders = {k: wds.WebLoader(v, batch_size=self.n_per_pair) for k, v in datasets.items()}
+        loaders = {k: iter(wds.WebLoader(v, batch_size=self.n_per_pair, drop_last=True)) for k, v in datasets.items()}
         return loaders
 
     def load_metaweb(self, interaction_path):
@@ -201,20 +201,8 @@ class InteractionDataset(IterableDataset):
             else:
                 p, b = next(pos_iter)
 
-
-            plant_iter = iter(self.plant_loaders[p])
-            bee_iter   = iter(self.bee_loaders[b])
-
-            try:
-                plant_img, _ = next(plant_iter)
-            except StopIteration:
-                plant_iter = iter(self.plant_loaders[p])
-                plant_img, _ = next(plant_iter)
-            try:
-                bee_img, _ = next(bee_iter)
-            except StopIteration:
-                bee_iter = iter(self.bee_loaders[b])
-                bee_img, _ = next(bee_iter)
+            plant_img, _ = next(self.plant_loaders[p])        
+            bee_img, _ = next(self.bee_loaders[b])
 
             yield p, b, plant_img, bee_img, self.metaweb[p, b]
 
