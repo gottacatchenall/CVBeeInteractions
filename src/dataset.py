@@ -166,51 +166,35 @@ class InteractionDataset(IterableDataset):
         return metaweb
 
     def __iter__(self):
-        # copy per worker
-        pl = self.plant_loaders.copy()
-        bl = self.plant_loaders.copy()
+        def infinite_loader(loader):
+            while True:
+                for batch in loader:
+                    yield batch
 
-        plant_loaders = {k: cycle(v) for k, v in pl.items()}
-        bee_loaders   = {k: cycle(v) for k, v in bl.items()}
+        plant_loaders = {k: infinite_loader(v) for k, v in self.plant_loaders.items()}
+        bee_loaders   = {k: infinite_loader(v) for k, v in self.bee_loaders.items()}
 
-        # --- Worker sharding ---
-        #worker_info = torch.utils.data.get_worker_info()
-        #if worker_info is None:
-        #    worker_id, num_workers = 0, 1
-        #else:
-        #    worker_id, num_workers = worker_info.id, worker_info.num_workers
-
-        # Shuffled copies each epoch
         pos = self.pos_pair.copy()
         neg = self.neg_pair.copy()
         random.shuffle(pos)
         random.shuffle(neg)
 
-        # Shard pairs across workers
-        #pos = pos[worker_id::num_workers]
-        #neg = neg[worker_id::num_workers]
-        
-        # Cycle within each class
-        pos_iter = cycle(pos) if len(pos) > 0 else iter(())
-        neg_iter = cycle(neg) if len(neg) > 0 else iter(())
+        pos_iter = cycle(pos) if len(pos) > 0 else None
+        neg_iter = cycle(neg) if len(neg) > 0 else None
 
-        # Define epoch length: one pass over all unique pairs (for this worker)
         total = len(pos) + len(neg)
-
-        # Pre-sample which indices should be positive (vectorized, avoids Python RNG in loop)
         take_pos_mask = torch.rand(total) < 0.5
 
         for take_pos in take_pos_mask:
-            
-            if take_pos and len(pos) > 0:
+            if take_pos and pos_iter is not None:
                 p, b = next(pos_iter)
-            elif len(neg) > 0:
+            elif neg_iter is not None:
                 p, b = next(neg_iter)
             else:
                 p, b = next(pos_iter)
 
-            plant_img, _ = next(plant_loaders[p])        
-            bee_img, _ = next(bee_loaders[b])
+            plant_img, _ = next(plant_loaders[p])
+            bee_img, _   = next(bee_loaders[b])
 
             yield p, b, plant_img, bee_img, self.metaweb[p, b]
 
