@@ -12,6 +12,14 @@ from torch.utils.data import DataLoader
 from transformers import AutoModel
 from collections import defaultdict
 
+from torchmetrics.classification import (
+    BinaryAccuracy,
+    BinaryAUROC,
+    BinaryAveragePrecision,
+)
+
+from torchmetrics.functional import binary_auroc, binary_average_precision
+
 
 class InteractionPredictor(pl.LightningModule):
     def __init__(
@@ -51,6 +59,11 @@ class InteractionPredictor(pl.LightningModule):
 
         self.lr = lr
         self.loss_fn = nn.BCEWithLogitsLoss()
+
+        # ---- TorchMetrics ----
+        self.val_acc = BinaryAccuracy()
+        self.val_auc = BinaryAUROC()
+        self.val_ap = BinaryAveragePrecision()
 
         self.val_outputs = []
 
@@ -118,64 +131,87 @@ class InteractionPredictor(pl.LightningModule):
         })
 
     def on_validation_epoch_end(self):
-        # aggregate per-species accuracy
-        plant_correct, plant_total = defaultdict(int), defaultdict(int)
-        bee_correct, bee_total = defaultdict(int), defaultdict(int)
+        # --- Global metrics ---
+        acc = self.val_acc.compute()
+        auc = self.val_auc.compute()
+        ap = self.val_ap.compute()
+        self.log("val/accuracy", acc, prog_bar=True)
+        self.log("val/rocauc", auc)
+        self.log("val/avg_precision", ap)
+
+        # reset for next epoch
+        self.val_acc.reset()
+        self.val_auc.reset()
+        self.val_ap.reset()
+
+        # --- Collect per-species data ---
+        plant_preds, plant_labels = defaultdict(list), defaultdict(list)
+        bee_preds, bee_labels = defaultdict(list), defaultdict(list)
 
         for out in self.val_outputs:
             preds, labels = out["preds"], out["labels"]
             plants, bees = out["plants"], out["bees"]
             for p, b, y, yhat in zip(plants, bees, labels, preds):
-                correct = int(y == yhat)
-                plant_total[p] += 1
-                bee_total[b] += 1
-                plant_correct[p] += correct
-                bee_correct[b] += correct
+                plant_preds[p].append(yhat.item())
+                plant_labels[p].append(y.item())
+                bee_preds[b].append(yhat.item())
+                bee_labels[b].append(y.item())
 
-        # log average per-species accuracy
-        if plant_total:
-            accs = [plant_correct[k] / plant_total[k] for k in plant_total]
-            self.log("val_plant_acc_mean", np.mean(accs))
-        if bee_total:
-            accs = [bee_correct[k] / bee_total[k] for k in bee_total]
-            self.log("val_bee_acc_mean", np.mean(accs))
+        # --- Per-species metrics ---
+        plant_df = []
+        for k in plant_preds:
+            yhat = torch.tensor(plant_preds[k])
+            y = torch.tensor(plant_labels[k]).int()
+            acc = ((yhat >= 0.5).int() == y).float().mean().item()
+            auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.nan
+            ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.nan
+            plant_df.append({"plant_id": k, "acc": acc, "auc": auc.item() if torch.isfinite(auc) else np.nan,
+                             "ap": ap.item() if torch.isfinite(ap) else np.nan, "n": len(y)})
 
+        bee_df = []
+        for k in bee_preds:
+            yhat = torch.tensor(bee_preds[k])
+            y = torch.tensor(bee_labels[k]).int()
+            acc = ((yhat >= 0.5).int() == y).float().mean().item()
+            auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.nan
+            ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.nan
+            bee_df.append({"bee_id": k, "acc": acc, "auc": auc.item() if torch.isfinite(auc) else np.nan,
+                           "ap": ap.item() if torch.isfinite(ap) else np.nan, "n": len(y)})
+
+        # log means
+        if plant_df:
+            self.log("val_plant_acc_mean", np.nanmean([d["acc"] for d in plant_df]))
+            self.log("val_plant_auc_mean", np.nanmean([d["auc"] for d in plant_df]))
+            self.log("val_plant_ap_mean", np.nanmean([d["ap"] for d in plant_df]))
+        if bee_df:
+            self.log("val_bee_acc_mean", np.nanmean([d["acc"] for d in bee_df]))
+            self.log("val_bee_auc_mean", np.nanmean([d["auc"] for d in bee_df]))
+            self.log("val_bee_ap_mean", np.nanmean([d["ap"] for d in bee_df]))
+
+        # --- Save per-species CSVs ---
         log_dir = os.path.join(self.logger.log_dir, "per_species")
         os.makedirs(log_dir, exist_ok=True)
+        pd.DataFrame(plant_df).to_csv(os.path.join(log_dir, f"val_plants_epoch{self.current_epoch}.csv"), index=False)
+        pd.DataFrame(bee_df).to_csv(os.path.join(log_dir, f"val_bees_epoch{self.current_epoch}.csv"), index=False)
 
-        plant_df = pd.DataFrame([
-            {"plant_id": k, "acc": plant_correct[k] / plant_total[k], "n": plant_total[k]}
-            for k in plant_total
-        ])
-        bee_df = pd.DataFrame([
-            {"bee_id": k, "acc": bee_correct[k] / bee_total[k], "n": bee_total[k]}
-            for k in bee_total
-        ])
-
-        plant_df.to_csv(os.path.join(log_dir, f"val_plants_epoch{self.current_epoch}.csv"), index=False)
-        bee_df.to_csv(os.path.join(log_dir, f"val_bees_epoch{self.current_epoch}.csv"), index=False)
-
-        # aggregate predictions across validation
-        plant_ids_all, bee_ids_all, probs_all = [], [], []
+        # --- Aggregate prediction probabilities ---
+        plant_ids_all, bee_ids_all, probs_all, preds_all = [], [], [], []
         for out in self.val_outputs:
-            logits = F.softmax(out["logits"], dim=0)  # [batch, 2]
-            probs = logits #logits[:, 1]  # probability of "interaction"
+            probs = torch.sigmoid(out["logits"])
+            preds = (probs >= 0.5).int()
             plant_ids_all.extend(out["plants"])
             bee_ids_all.extend(out["bees"])
             probs_all.extend(probs.cpu().tolist())
+            preds_all.extend(preds.cpu().tolist())
 
-        # --- Convert to long-form dataframe ---
         df = pd.DataFrame({
             "plant_id": plant_ids_all,
             "bee_id": bee_ids_all,
             "interaction_prob": probs_all,
+            "interaction_pred": preds_all,
         })
-      
+        df = df[["bee_id", "plant_id", "interaction_prob", "interaction_pred"]]
 
-        # Reorder columns
-        df = df[["bee_id", "plant_id", "interaction_prob"]]
-
-        # --- Save CSV ---
         log_dir = os.path.join(self.logger.log_dir, "species_probs")
         os.makedirs(log_dir, exist_ok=True)
         csv_path = os.path.join(log_dir, f"val_probs_epoch{self.current_epoch}.csv")
@@ -183,7 +219,7 @@ class InteractionPredictor(pl.LightningModule):
 
         print(f"[Epoch {self.current_epoch}] Wrote interaction probabilities to {csv_path}")
 
-        self.val_outputs.clear()  
+        self.val_outputs.clear()
 
     def configure_optimizers(self):
         optim = torch.optim.AdamW(self.parameters(), lr=self.lr)

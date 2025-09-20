@@ -89,3 +89,22 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args)
 
+
+
+base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
+
+datamodule = setup_data(base_path, args)
+
+model = InteractionPredictor(
+    lr=args.lr, 
+    model_type=args.model,
+)
+
+datamodule.setup()
+dl = datamodule.train_dataloader()
+
+
+batch = next(iter(dl))
+
+model.shared_step(batch, 0)
+
