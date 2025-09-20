@@ -1,6 +1,6 @@
 import torch
 import webdataset as wds
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 import torchvision.transforms.v2 as v2
 import random
@@ -47,8 +47,8 @@ class SamplerDecoder():
 class ZeroShotMaskMaker:
     def __init__(
         self, 
-        plant_labels_path,
-        bee_labels_path, 
+        plant_names,
+        bee_names, 
         holdout_plants=0, 
         holdout_bees=0, 
         seed=0, 
@@ -58,40 +58,108 @@ class ZeroShotMaskMaker:
         Hold out a fixed number of species of each type.
         If holdout_* is a fraction (0 < x < 1), interpret as proportion.
         """
-        self.bee_name2label   = load_json(bee_labels_path)
-        self.plant_name2label = load_json(plant_labels_path)
-
-        self.num_plants = len(self.plant_name2label)
-        self.num_bees = len(self.bee_name2label)
-
         rng = np.random.RandomState(seed)
-        plant_ids = np.arange(self.num_plants)
-        bee_ids   = np.arange(self.num_bees)
-
         self.strict = strict
 
         # Handle integers vs fractions
         if 0 < holdout_plants < 1:
-            holdout_plants = int(len(plant_ids) * holdout_plants)
+            holdout_plants = int(len(plant_names) * holdout_plants)
         if 0 < holdout_bees < 1:
-            holdout_bees = int(len(bee_ids) * holdout_bees)
+            holdout_bees = int(len(bee_names) * holdout_bees)
 
-        self.holdout_plants = rng.choice(plant_ids, holdout_plants, replace=False) if holdout_plants > 0 else []
-        self.holdout_bees   = rng.choice(bee_ids, holdout_bees, replace=False) if holdout_bees > 0 else []
+        self.holdout_plants = rng.choice(plant_names, holdout_plants, replace=False) if holdout_plants > 0 else []
+        self.holdout_bees   = rng.choice(bee_names, holdout_bees, replace=False) if holdout_bees > 0 else []
 
-        self.train_plants = np.setdiff1d(plant_ids, self.holdout_plants)
-        self.train_bees   = np.setdiff1d(bee_ids, self.holdout_bees)
+        self.train_plants = np.setdiff1d(plant_names, self.holdout_plants)
+        self.train_bees   = np.setdiff1d(bee_names, self.holdout_bees)
 
     def is_train_pair(self, plant_id, bee_id):
         return (plant_id in self.train_plants) and (bee_id in self.train_bees)
 
-    def is_val_pair(self, plant_id, bee_id):
+    def is_val_pair(self, plant_name, bee_name):
         if self.strict:
-            return (plant_id in self.holdout_plants and bee_id in self.holdout_bees)
+            return (plant_name in self.holdout_plants and bee_name in self.holdout_bees)
         else:
             # Any pair with a held-out species
-            return (plant_id in self.holdout_plants) or (bee_id in self.holdout_bees)
+            return (plant_name in self.holdout_plants) or (bee_name in self.holdout_bees)
 
+class PairInteractionDataset(Dataset):
+    """
+    A Dataset for widget/sprocket pair interactions that loads N_IMGS images
+    for each on the fly.
+    """
+    def __init__(self, 
+        pairs_data, 
+        plant_dir, 
+        bee_dir, 
+        mask, 
+        n_imgs = 16,
+        split = "train", 
+        transform=None
+    ):
+        # pairs_data should be a list of tuples: 
+        # [(bee_id_1, plant_id_1, label_1), ...]
+        self.n_imgs = n_imgs
+        self.plant_dir = plant_dir
+        self.bee_dir = bee_dir
+        self.mask = mask
+        self.split = split
+        self.transform = transform
+
+        check_fcn = mask.is_train_pair if split == "train" else mask.is_val_pair    
+        self.pairs_data = [(p,b,k) for p,b,k in pairs_data if check_fcn(p,b)]
+
+        # Example: {bee_id: [path_to_img_1, path_to_img_2, ...]}
+        self.plant_file_maps = self._map_image_files(plant_dir)
+        self.bee_file_maps = self._map_image_files(bee_dir)
+
+
+    def _map_image_files(self, base_dir):
+        """Helper to map IDs to lists of image paths."""
+        file_map = {}
+        for item_id in os.listdir(base_dir): 
+            item_path = os.path.join(base_dir, item_id)
+            if os.path.isdir(item_path):
+                # Assumes images for an ID are in a subfolder named by the ID
+                images = [os.path.join(item_path, f) for f in os.listdir(item_path) if f.endswith(('.jpg', '.png'))]
+                file_map[item_id] = images
+        return file_map
+        
+
+    def __len__(self):
+        return len(self.pairs_data)
+
+    def __getitem__(self, idx):
+        plant_name, bee_name, label = self.pairs_data[idx]
+        
+        # Get all image paths for the current widget/sprocket
+        plant_paths = self.plant_file_maps[plant_name]
+        bee_paths = self.bee_file_maps[bee_name]
+        
+        # Sample N_IMGS paths with replacement (safer if fewer than N_IMGS exist)
+        plant_samples = random.choices(plant_paths, k=self.n_imgs)
+        bee_samples = random.choices(bee_paths, k=self.n_imgs)
+        
+        # 2. Load and Transform the sampled images
+    
+        def load_images(paths):
+            imgs = []
+            for path in paths:
+                img = Image.open(path).convert('RGB')
+                if self.transform:
+                    img = self.transform(img)
+                imgs.append(img)
+            # Stack the N_IMGS images into a single tensor of shape [n_imgs, C, H, W]
+            return torch.stack(imgs) 
+
+        plant_tensors = load_images(plant_samples)
+        bee_tensors = load_images(bee_samples)
+        
+        # NOTE: The tensors are still on the CPU at this point.
+        return plant_name, bee_name, plant_tensors, bee_tensors, torch.tensor(label, dtype=torch.long)
+
+
+"""
 class InteractionDataset(IterableDataset):
     def __init__(
         self,
@@ -155,7 +223,6 @@ class InteractionDataset(IterableDataset):
         }
         return datasets 
 
-    """
     def get_loaders(self, dir, name2labels):
         decoder = SamplerDecoder()
         datasets = {
@@ -174,7 +241,6 @@ class InteractionDataset(IterableDataset):
         }
         loaders = {k: wds.WebLoader(v, batch_size=self.n_per_pair, drop_last=True) for k, v in datasets.items()}
         return loaders
-    """
     def load_metaweb(self, interaction_path):
         int_df = pd.read_csv(interaction_path)
         metaweb = torch.zeros(len(self.plant_name2label), len(self.bee_name2label))
@@ -183,7 +249,7 @@ class InteractionDataset(IterableDataset):
             pi, bi = self.plant_name2label[plant], self.bee_name2label[bee]
             metaweb[pi, bi] = int(int_bit)
         return metaweb
-    
+
     # In InteractionDataset.__iter__():
     def __iter__(self):
         # FIX: Use cycling iterators on the WebDataset iterables
@@ -230,84 +296,12 @@ class InteractionDataset(IterableDataset):
         else:
             return infinite_pair_sampler() # If not set, run indefinitely
     """
-    def __iter__(self):
-        # Ensure all species datasets are accessible as infinitely cycling iterators
-        plant_iters = {k: cycle(v) for k, v in self.plant_datasets.items()} # self.plant_datasets from get_loaders
-        bee_iters   = {k: cycle(v) for k, v in self.bee_datasets.items()}   # self.bee_datasets from get_loaders
-
-        pos = self.pos_pair.copy()
-        neg = self.neg_pair.copy()
-        random.shuffle(pos)
-        random.shuffle(neg)
-
-        pos_iter = cycle(pos) if len(pos) > 0 else None
-        neg_iter = cycle(neg) if len(neg) > 0 else None
-
-        # Use a loop that yields a continuous stream of pairs
-        # The total number of iterations should be large/infinite for an IterableDataset
-        # Using islice to manage the number of pairs to sample per epoch, or just 'while True'
-        while True: # Changed from fixed loop for better IterableDataset behavior
-            # Simple alternating selection logic
-            pair_to_sample = None
-            if pos_iter is not None and (neg_iter is None or torch.rand(1) < 0.5):
-                pair_to_sample = next(pos_iter)
-            elif neg_iter is not None:
-                pair_to_sample = next(neg_iter)
-            else:
-                # Should not happen if pos/neg are not both None
-                break
-
-            p, b = pair_to_sample
-
-            # Use next() on the cycling iterators which now yield the mini-batches
-            # plant_img is a batch of (n_per_pair) images and labels are unused
-            plant_img, _ = next(plant_iters[p])
-            bee_img, _   = next(bee_iters[b])
-
-            # metaweb[p, b] is a scalar, convert to tensor if necessary
-            yield p, b, plant_img, bee_img, self.metaweb[p, b].float() 
-
-    def __iter__(self):
-        def infinite_loader(loader):
-            while True:
-                for batch in loader:
-                    yield batch
-
-        plant_loaders = {k: infinite_loader(v) for k, v in self.plant_loaders.items()}
-        bee_loaders   = {k: infinite_loader(v) for k, v in self.bee_loaders.items()}
-
-        pos = self.pos_pair.copy()
-        neg = self.neg_pair.copy()
-        random.shuffle(pos)
-        random.shuffle(neg)
-
-        pos_iter = cycle(pos) if len(pos) > 0 else None
-        neg_iter = cycle(neg) if len(neg) > 0 else None
-
-        total = len(pos) + len(neg)
-        take_pos_mask = torch.rand(total) < 0.5
-
-        for take_pos in take_pos_mask:
-            if take_pos and pos_iter is not None:
-                p, b = next(pos_iter)
-            elif neg_iter is not None:
-                p, b = next(neg_iter)
-            else:
-                p, b = next(pos_iter)
-
-            plant_img, _ = next(plant_loaders[p])
-            bee_img, _   = next(bee_loaders[b])
-
-            yield p, b, plant_img, bee_img, self.metaweb[p, b]
-        """
 
 class PlantPollinatorDataModule(pl.LightningDataModule):
     def __init__(
         self,
         plant_dir,
         bee_dir,
-        plant_labels_path,
-        bee_labels_path,
         interaction_path,
         args
     ):
@@ -315,45 +309,50 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
 
         self.plant_dir = plant_dir
         self.bee_dir = bee_dir
-        self.plant_labels_path = plant_labels_path
-        self.bee_labels_path = bee_labels_path
-        self.interaction_path = interaction_path
-        self.train_steps_per_epoch = args.train_steps_per_epoch
+
+        self.image_transform = v2.Compose([
+            v2.Resize((224, 224)),
+            v2.ToTensor(),
+            v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+        df = pd.read_csv(interaction_path)
+
+        self.plant_names = df.plant.unique()
+        self.bee_names = df.bee.unique()
+        self.all_pairs = [(r.plant, r.bee, r.interaction) for _,r in df.iterrows()]
 
         self.mask = ZeroShotMaskMaker(
-            plant_labels_path,
-            bee_labels_path,
+            self.plant_names,
+            self.bee_names,
             holdout_bees=args.holdout_bees,
             holdout_plants=args.holdout_plants
-        )
-        # self.metaweb = load_metaweb(interactions_path)
-        
+        )        
         
         self.batch_size = args.batch_size
+        self.imgs_per_species = args.imgs_per_species
         self.num_workers = args.num_workers
         self.prefetch_factor = args.prefetch_factor
         self.persistent_workers = args.persistent_workers
         
     def setup(self, stage=None):
-        self.train_dataset = InteractionDataset(
+        self.train_dataset = PairInteractionDataset(
+            self.all_pairs,
             self.plant_dir,
             self.bee_dir,
-            self.plant_labels_path,
-            self.bee_labels_path,
-            self.interaction_path,
             self.mask,
-            steps_per_epoch = self.train_steps_per_epoch,
+            n_imgs = self.imgs_per_species,
+            transform= self.image_transform,
             split = "train"
         )
 
-        self.val_dataset = InteractionDataset(
+        self.val_dataset = PairInteractionDataset(
+            self.all_pairs,
             self.plant_dir,
             self.bee_dir,
-            self.plant_labels_path,
-            self.bee_labels_path,
-            self.interaction_path,
             self.mask,
-            steps_per_epoch = None,
+            n_imgs = self.imgs_per_species,
+            transform= self.image_transform,
             split = "val"
         )
 
@@ -362,6 +361,8 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.train_dataset, 
             batch_size = self.batch_size, 
             num_workers = self.num_workers,
+            pin_memory=True, 
+            shuffle=True,
             #prefetch_factor = self.prefetch_factor,
             #persistent_workers = self.persistent_workers
         )
@@ -372,6 +373,8 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.val_dataset, 
             batch_size = self.batch_size,
             num_workers = self.num_workers,
+            pin_memory=True,
+            shuffle=True,
             #prefetch_factor = self.prefetch_factor,
             #persistent_workers = self.persistent_workers
         )

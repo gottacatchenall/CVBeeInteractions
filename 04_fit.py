@@ -5,37 +5,26 @@ import torch
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader
-from src.dataset import InteractionDataset, ZeroShotMaskMaker, PlantPollinatorDataModule
+from src.dataset import PlantPollinatorDataModule
 from src.model import InteractionPredictor
 from lightning.pytorch.loggers import CSVLogger
 
 
-import torch.multiprocessing
-
-# The Fix: Use the safer 'spawn' method for CUDA
-if torch.cuda.is_available():
-    torch.multiprocessing.set_start_method('spawn', force=True)
-
-
-
 def setup_data(base_path, args, toy=False):
-    plant_dir = "toy_plant_wds" if toy else "plant_wds"
-    bee_dir = "toy_bee_wds" if toy else "bee_wds"
+    plant_dir = "toy_plant_wds" if toy else "plant_img"
+    bee_dir = "toy_bee_wds" if toy else "bombus_img"
 
-    plant_dir = os.path.join(base_path, plant_dir)
-    bee_dir = os.path.join(base_path, bee_dir)
-    plant_labels_path = os.path.join(base_path, "plant_labels.json")
-    bee_labels_path = os.path.join(base_path, "bee_labels.json")
-    interaction_path = os.path.join(base_path, "interactions.csv")
+    PLANT_BASE_DIR = os.path.join(base_path, plant_dir)
+    BEE_BASE_DIR = os.path.join(base_path, bee_dir)
+    METAWEB_PATH = os.path.join(base_path, "interactions.csv")
 
     dm = PlantPollinatorDataModule(
-        plant_dir,
-        bee_dir,
-        plant_labels_path,
-        bee_labels_path,
-        interaction_path,
+        PLANT_BASE_DIR,
+        BEE_BASE_DIR,
+        METAWEB_PATH,
         args
     )
+
     return dm
 
 def setup_trainer_args():
@@ -78,8 +67,7 @@ def main(args):
         strategy = strategy,
         logger = logger,
         max_epochs = args.max_epochs,
-        limit_train_batches = args.train_steps_per_epoch,
-        enable_progress_bar=False 
+        #enable_progress_bar=False 
     )
     trainer.fit(model, datamodule)
 
@@ -87,9 +75,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=3e-4)
     parser.add_argument('--max_epochs', type=int, default=100)
-    parser.add_argument('--samples_per_pair', type=int, default=16)
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--train_steps_per_epoch', type=int, default=1000) 
+    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--imgs_per_species', type=int, default=8) 
     parser.add_argument('--holdout_bees', default=0.1)
     parser.add_argument('--holdout_plants', default=0.1)
     parser.add_argument('--num_workers', type=int, default=1)
@@ -101,3 +88,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
+

@@ -92,29 +92,29 @@ class InteractionPredictor(pl.LightningModule):
         # batch is a list/tuple of N items from PairedBagDataset, but when using DataLoader with batch_size=N,
         # a collated batch will have each field stacked automatically.
 
-        plant_ids, bee_ids, plant_bags, bee_bags, labels = batch
+        plant_name, bee_name, plant_bags, bee_bags, labels = batch
 
         logits = self.forward(plant_bags, bee_bags)
         labels = labels.float()
         loss = self.loss_fn(logits, labels)
         preds = torch.sigmoid(logits)
-        return loss, logits, preds, labels, plant_ids, bee_ids
+        return plant_name, bee_name, loss, logits, preds, labels
 
     def training_step(self, batch, batch_idx):
-        loss, _, _, _, _, _ = self.shared_step(batch, batch_idx)
+        _, _, loss, _, _, _ = self.shared_step(batch, batch_idx)
         self.log("train/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, logits, preds, labels, plant_ids, bee_ids = self.shared_step(batch, batch_idx)
+        plant_name, bee_name, loss, logits, preds, labels = self.shared_step(batch, batch_idx)
         self.log("val/loss", loss, prog_bar=False, on_epoch=True)
         self.val_outputs.append({
             "loss": loss.detach(),
             "preds": preds.cpu(),
             "logits": logits.detach().cpu(),
             "labels": labels.cpu(),
-            "plants": plant_ids.cpu(),
-            "bees": bee_ids.cpu(),
+            "plants": plant_name,
+            "bees": bee_name,
         })
 
     def on_validation_epoch_end(self):
@@ -127,10 +127,10 @@ class InteractionPredictor(pl.LightningModule):
             plants, bees = out["plants"], out["bees"]
             for p, b, y, yhat in zip(plants, bees, labels, preds):
                 correct = int(y == yhat)
-                plant_total[p.item()] += 1
-                bee_total[b.item()] += 1
-                plant_correct[p.item()] += correct
-                bee_correct[b.item()] += correct
+                plant_total[p] += 1
+                bee_total[b] += 1
+                plant_correct[p] += correct
+                bee_correct[b] += correct
 
         # log average per-species accuracy
         if plant_total:
@@ -160,8 +160,8 @@ class InteractionPredictor(pl.LightningModule):
         for out in self.val_outputs:
             logits = F.softmax(out["logits"], dim=0)  # [batch, 2]
             probs = logits #logits[:, 1]  # probability of "interaction"
-            plant_ids_all.extend(out["plants"].tolist())
-            bee_ids_all.extend(out["bees"].tolist())
+            plant_ids_all.extend(out["plants"])
+            bee_ids_all.extend(out["bees"])
             probs_all.extend(probs.cpu().tolist())
 
         # --- Convert to long-form dataframe ---
