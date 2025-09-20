@@ -147,7 +147,6 @@ class InteractionDataset(IterableDataset):
                     repeat=True # Important for infinite iteration
                 )
                 .decode()
-                .split_by_worker()
                 .to_tuple("json", "jpg")
                 .map(decoder) # -> (img_tensor, label)
                 .batched(self.n_per_pair)
