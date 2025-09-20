@@ -18,7 +18,7 @@ from torchmetrics.classification import (
     BinaryAveragePrecision,
 )
 
-from torchmetrics.functional import binary_auroc, binary_average_precision
+from torchmetrics.functional.classification import binary_auroc, binary_average_precision, binary_accuracy
 
 
 class InteractionPredictor(pl.LightningModule):
@@ -120,7 +120,14 @@ class InteractionPredictor(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         plant_name, bee_name, loss, logits, preds, labels = self.shared_step(batch, batch_idx)
+        # update torchmetrics
+        self.val_acc.update(logits, labels.int())
+        self.val_auc.update(logits, labels.int())
+        self.val_ap.update(logits, labels.int())
+
         self.log("val/loss", loss, prog_bar=False, on_epoch=True)
+
+        # keep for per-species logging
         self.val_outputs.append({
             "loss": loss.detach(),
             "preds": preds.cpu(),
@@ -132,18 +139,14 @@ class InteractionPredictor(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         # --- Global metrics ---
+
         acc = self.val_acc.compute()
         auc = self.val_auc.compute()
         ap = self.val_ap.compute()
         self.log("val/accuracy", acc, prog_bar=True)
         self.log("val/rocauc", auc)
         self.log("val/avg_precision", ap)
-
-        # reset for next epoch
-        self.val_acc.reset()
-        self.val_auc.reset()
-        self.val_ap.reset()
-
+        
         # --- Collect per-species data ---
         plant_preds, plant_labels = defaultdict(list), defaultdict(list)
         bee_preds, bee_labels = defaultdict(list), defaultdict(list)
@@ -165,18 +168,18 @@ class InteractionPredictor(pl.LightningModule):
             acc = ((yhat >= 0.5).int() == y).float().mean().item()
             auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.nan
             ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.nan
-            plant_df.append({"plant_id": k, "acc": acc, "auc": auc.item() if torch.isfinite(auc) else np.nan,
-                             "ap": ap.item() if torch.isfinite(ap) else np.nan, "n": len(y)})
+            plant_df.append({"plant_id": k, "acc": acc, "auc": auc,
+                             "ap": ap, "n": len(y)})
 
         bee_df = []
         for k in bee_preds:
             yhat = torch.tensor(bee_preds[k])
             y = torch.tensor(bee_labels[k]).int()
-            acc = ((yhat >= 0.5).int() == y).float().mean().item()
+            acc = binary_accuracy(yhat, y)
             auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.nan
             ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.nan
-            bee_df.append({"bee_id": k, "acc": acc, "auc": auc.item() if torch.isfinite(auc) else np.nan,
-                           "ap": ap.item() if torch.isfinite(ap) else np.nan, "n": len(y)})
+            bee_df.append({"bee_id": k, "acc": acc.item(), "auc": auc.item(),
+                           "ap": ap.item(), "n": len(y)})
 
         # log means
         if plant_df:
@@ -218,6 +221,11 @@ class InteractionPredictor(pl.LightningModule):
         df.to_csv(csv_path, index=False)
 
         print(f"[Epoch {self.current_epoch}] Wrote interaction probabilities to {csv_path}")
+
+        # reset for next epoch
+        self.val_acc.reset()
+        self.val_auc.reset()
+        self.val_ap.reset()
 
         self.val_outputs.clear()
 
