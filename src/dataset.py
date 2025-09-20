@@ -149,7 +149,7 @@ class InteractionDataset(IterableDataset):
                 .decode()
                 .to_tuple("json", "jpg")
                 .map(decoder) # -> (img_tensor, label)
-                .batched(self.n_per_pair)
+                .batched(self.n_per_pair, drop_last=True)
                 .repeat() 
             )
             for name in name2labels.keys()
