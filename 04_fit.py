@@ -9,6 +9,15 @@ from src.dataset import InteractionDataset, ZeroShotMaskMaker, PlantPollinatorDa
 from src.model import InteractionPredictor
 from lightning.pytorch.loggers import CSVLogger
 
+
+import torch.multiprocessing
+
+# The Fix: Use the safer 'spawn' method for CUDA
+if torch.cuda.is_available():
+    torch.multiprocessing.set_start_method('spawn', force=True)
+
+
+
 def setup_data(base_path, args, toy=False):
     plant_dir = "toy_plant_wds" if toy else "plant_wds"
     bee_dir = "toy_bee_wds" if toy else "bee_wds"

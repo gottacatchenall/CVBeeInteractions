@@ -147,6 +147,7 @@ class InteractionDataset(IterableDataset):
                     repeat=True # Important for infinite iteration
                 )
                 .decode()
+                .split_by_worker()
                 .to_tuple("json", "jpg")
                 .map(decoder) # -> (img_tensor, label)
                 .batched(self.n_per_pair)
@@ -361,8 +362,8 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.train_dataset, 
             batch_size = self.batch_size, 
             num_workers = self.num_workers,
-            prefetch_factor = self.prefetch_factor,
-            persistent_workers = self.persistent_workers
+            #prefetch_factor = self.prefetch_factor,
+            #persistent_workers = self.persistent_workers
         )
         return train_loader
   
@@ -371,7 +372,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.val_dataset, 
             batch_size = self.batch_size,
             num_workers = self.num_workers,
-            prefetch_factor = self.prefetch_factor,
-            persistent_workers = self.persistent_workers
+            #prefetch_factor = self.prefetch_factor,
+            #persistent_workers = self.persistent_workers
         )
         return val_loader
