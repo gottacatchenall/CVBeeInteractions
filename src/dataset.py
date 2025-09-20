@@ -136,7 +136,6 @@ class InteractionDataset(IterableDataset):
         # --- Split pairs into pos and negative ---
         self.pos_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 1]
         self.neg_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 0]
-
     def get_loaders(self, dir, name2labels):
         # Use a simpler DataLoader for the WebDataset iteration inside the worker
         decoder = SamplerDecoder()
@@ -149,7 +148,7 @@ class InteractionDataset(IterableDataset):
                 .decode()
                 .to_tuple("json", "jpg")
                 .map(decoder) # -> (img_tensor, label)
-                .batched(self.n_per_pair, drop_last=True)
+                .batched(self.n_per_pair)
                 .repeat() 
             )
             for name in name2labels.keys()
@@ -218,9 +217,11 @@ class InteractionDataset(IterableDataset):
                 # Fetch the image mini-batches (size n_per_pair)
                 plant_img, _ = next(plant_iters[p])
                 bee_img, _   = next(bee_iters[b])
-
-                # The metaweb value is a scalar; convert to float tensor for consistency
-                yield p, b, plant_img, bee_img, self.metaweb[p, b].float()
+                    
+                if bee_img.shape[0] == self.n_per_pair and plant_img.shape[0] == self.n_per_pair:
+                    yield p, b, plant_img, bee_img, self.metaweb[p, b].float()
+                else:
+                    continue
         # ---------------------------------------
 
         # Apply islice to limit the number of batches per epoch
