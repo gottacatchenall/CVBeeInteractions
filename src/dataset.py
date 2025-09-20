@@ -121,8 +121,8 @@ class InteractionDataset(IterableDataset):
         self.n_per_pair = n_per_pair
         self.mask = mask
 
-        self.plant_loaders = self.get_loaders(plant_dir, self.plant_name2label)
-        self.bee_loaders   = self.get_loaders(bee_dir, self.bee_name2label)
+        self.plant_datasets = self.get_loaders(plant_dir, self.plant_name2label)
+        self.bee_datasets   = self.get_loaders(bee_dir, self.bee_name2label)
 
         all_pairs = [(p, b) for p in self.plant_labels for b in self.bee_labels]
         if split == "train":
@@ -136,7 +136,27 @@ class InteractionDataset(IterableDataset):
         self.pos_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 1]
         self.neg_pair = [(p,b) for (p,b) in self.pairs if self.metaweb[p,b] == 0]
 
+    def get_loaders(self, dir, name2labels):
+        # Use a simpler DataLoader for the WebDataset iteration inside the worker
+        decoder = SamplerDecoder()
+        datasets = {
+            name2labels[name]: (
+                wds.WebDataset(
+                    os.path.join(dir, f"{name}.tar"),
+                    # shardshuffle=True, # You want this, but WebDataset shuffling is complex with external DataLoader
+                    # nodesplitter=wds.split_by_node, # This is usually handled by the main wds pipeline/shard list
+                    repeat=True # Important for infinite iteration
+                )
+                .decode()
+                .to_tuple("json", "jpg")
+                .map(decoder) # -> (img_tensor, label)
+                .batched(self.n_per_pair) # <-- Use wds.batched() here
+            )
+            for name in name2labels.keys()
+        }
+        return datasets 
 
+    """
     def get_loaders(self, dir, name2labels):
         decoder = SamplerDecoder()
         datasets = {
@@ -155,7 +175,7 @@ class InteractionDataset(IterableDataset):
         }
         loaders = {k: wds.WebLoader(v, batch_size=self.n_per_pair, drop_last=True) for k, v in datasets.items()}
         return loaders
-
+    """
     def load_metaweb(self, interaction_path):
         int_df = pd.read_csv(interaction_path)
         metaweb = torch.zeros(len(self.plant_name2label), len(self.bee_name2label))
@@ -164,7 +184,45 @@ class InteractionDataset(IterableDataset):
             pi, bi = self.plant_name2label[plant], self.bee_name2label[bee]
             metaweb[pi, bi] = int(int_bit)
         return metaweb
+    
+    def __iter__(self):
+        # Ensure all species datasets are accessible as infinitely cycling iterators
+        plant_iters = {k: cycle(v) for k, v in self.plant_datasets.items()} # self.plant_datasets from get_loaders
+        bee_iters   = {k: cycle(v) for k, v in self.bee_datasets.items()}   # self.bee_datasets from get_loaders
 
+        pos = self.pos_pair.copy()
+        neg = self.neg_pair.copy()
+        random.shuffle(pos)
+        random.shuffle(neg)
+
+        pos_iter = cycle(pos) if len(pos) > 0 else None
+        neg_iter = cycle(neg) if len(neg) > 0 else None
+
+        # Use a loop that yields a continuous stream of pairs
+        # The total number of iterations should be large/infinite for an IterableDataset
+        # Using islice to manage the number of pairs to sample per epoch, or just 'while True'
+        while True: # Changed from fixed loop for better IterableDataset behavior
+            # Simple alternating selection logic
+            pair_to_sample = None
+            if pos_iter is not None and (neg_iter is None or torch.rand(1) < 0.5):
+                pair_to_sample = next(pos_iter)
+            elif neg_iter is not None:
+                pair_to_sample = next(neg_iter)
+            else:
+                # Should not happen if pos/neg are not both None
+                break
+
+            p, b = pair_to_sample
+
+            # Use next() on the cycling iterators which now yield the mini-batches
+            # plant_img is a batch of (n_per_pair) images and labels are unused
+            plant_img, _ = next(plant_iters[p])
+            bee_img, _   = next(bee_iters[b])
+
+            # metaweb[p, b] is a scalar, convert to tensor if necessary
+            yield p, b, plant_img, bee_img, self.metaweb[p, b].float() 
+
+    """
     def __iter__(self):
         def infinite_loader(loader):
             while True:
@@ -197,7 +255,7 @@ class InteractionDataset(IterableDataset):
             bee_img, _   = next(bee_loaders[b])
 
             yield p, b, plant_img, bee_img, self.metaweb[p, b]
-
+        """
 
 class PlantPollinatorDataModule(pl.LightningDataModule):
     def __init__(
