@@ -144,8 +144,6 @@ class InteractionDataset(IterableDataset):
             name2labels[name]: (
                 wds.WebDataset(
                     os.path.join(dir, f"{name}.tar"),
-                    # shardshuffle=True, # You want this, but WebDataset shuffling is complex with external DataLoader
-                    # nodesplitter=wds.split_by_node, # This is usually handled by the main wds pipeline/shard list
                     repeat=True # Important for infinite iteration
                 )
                 .decode()
