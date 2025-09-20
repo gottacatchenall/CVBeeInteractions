@@ -363,8 +363,8 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             num_workers = self.num_workers,
             pin_memory=True, 
             shuffle=True,
-            #prefetch_factor = self.prefetch_factor,
-            #persistent_workers = self.persistent_workers
+            prefetch_factor = self.prefetch_factor,
+            persistent_workers = self.persistent_workers
         )
         return train_loader
   
@@ -375,7 +375,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             num_workers = self.num_workers,
             pin_memory=True,
             shuffle=True,
-            #prefetch_factor = self.prefetch_factor,
-            #persistent_workers = self.persistent_workers
+            prefetch_factor = self.prefetch_factor,
+            persistent_workers = self.persistent_workers
         )
         return val_loader

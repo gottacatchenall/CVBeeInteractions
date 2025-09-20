@@ -67,7 +67,7 @@ def main(args):
         strategy = strategy,
         logger = logger,
         max_epochs = args.max_epochs,
-        #enable_progress_bar=False 
+        enable_progress_bar=False 
     )
     trainer.fit(model, datamodule)
 
