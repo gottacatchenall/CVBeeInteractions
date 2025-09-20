@@ -103,6 +103,7 @@ class InteractionDataset(IterableDataset):
         mask,
         split="train",
         n_per_pair=16,   # <-- sample N images per species per pair
+        steps_per_epoch = 100,
     ):
         super().__init__()
         self.plant_dir = plant_dir
@@ -111,7 +112,7 @@ class InteractionDataset(IterableDataset):
         self.bee_name2label   = load_json(bee_labels_path)
         self.bee_labels = [x for x in self.bee_name2label.values()]
         self.plant_labels = [x for x in self.plant_name2label.values()]
-
+        self.steps_per_epoch = steps_per_epoch
         self.metaweb = self.load_metaweb(interaction_path)
 
         self.plant_ids = list(self.plant_name2label.values())
@@ -185,6 +186,50 @@ class InteractionDataset(IterableDataset):
             metaweb[pi, bi] = int(int_bit)
         return metaweb
     
+    # In InteractionDataset.__iter__():
+    def __iter__(self):
+        # FIX: Use cycling iterators on the WebDataset iterables
+        plant_iters = {k: cycle(v) for k, v in self.plant_datasets.items()}
+        bee_iters   = {k: cycle(v) for k, v in self.bee_datasets.items()}
+
+        pos = self.pos_pair.copy()
+        neg = self.neg_pair.copy()
+        random.shuffle(pos)
+        random.shuffle(neg)
+
+        pos_iter = cycle(pos) if len(pos) > 0 else None
+        neg_iter = cycle(neg) if len(neg) > 0 else None
+
+        # --- Infinite Pair Sampler Generator ---
+        def infinite_pair_sampler():
+            while True:
+                # Logic to select a positive or negative pair
+                take_pos = (neg_iter is None) or (pos_iter is not None and torch.rand(1) < 0.5)
+
+                if take_pos and pos_iter is not None:
+                    p, b = next(pos_iter)
+                elif neg_iter is not None:
+                    p, b = next(neg_iter)
+                elif pos_iter is not None: # Fallback if only pos_iter remains
+                    p, b = next(pos_iter)
+                else:
+                    # No pairs available (shouldn't happen in a training loop)
+                    return 
+
+                # Fetch the image mini-batches (size n_per_pair)
+                plant_img, _ = next(plant_iters[p])
+                bee_img, _   = next(bee_iters[b])
+
+                # The metaweb value is a scalar; convert to float tensor for consistency
+                yield p, b, plant_img, bee_img, self.metaweb[p, b].float()
+        # ---------------------------------------
+
+        # Apply islice to limit the number of batches per epoch
+        if self.steps_per_epoch is not None and self.steps_per_epoch > 0:
+            return islice(infinite_pair_sampler(), self.steps_per_epoch)
+        else:
+            return infinite_pair_sampler() # If not set, run indefinitely
+    """
     def __iter__(self):
         # Ensure all species datasets are accessible as infinitely cycling iterators
         plant_iters = {k: cycle(v) for k, v in self.plant_datasets.items()} # self.plant_datasets from get_loaders
@@ -222,7 +267,6 @@ class InteractionDataset(IterableDataset):
             # metaweb[p, b] is a scalar, convert to tensor if necessary
             yield p, b, plant_img, bee_img, self.metaweb[p, b].float() 
 
-    """
     def __iter__(self):
         def infinite_loader(loader):
             while True:
@@ -274,6 +318,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         self.plant_labels_path = plant_labels_path
         self.bee_labels_path = bee_labels_path
         self.interaction_path = interaction_path
+        self.train_steps_per_epoch = args.train_steps_per_epoch
 
         self.mask = ZeroShotMaskMaker(
             plant_labels_path,
@@ -297,6 +342,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.bee_labels_path,
             self.interaction_path,
             self.mask,
+            steps_per_epoch = self.train_steps_per_epoch,
             split = "train"
         )
 
@@ -307,6 +353,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             self.bee_labels_path,
             self.interaction_path,
             self.mask,
+            steps_per_epoch = None,
             split = "val"
         )
 

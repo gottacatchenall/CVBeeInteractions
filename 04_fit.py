@@ -77,7 +77,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=3e-4)
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--samples_per_pair', type=int, default=16)
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--train_steps_per_epoch', type=int, default=1000) 
     parser.add_argument('--holdout_bees', default=0.1)
     parser.add_argument('--holdout_plants', default=0.1)
     parser.add_argument('--num_workers', type=int, default=1)
@@ -89,8 +90,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
-
-
-
-
 
