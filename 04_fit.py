@@ -14,10 +14,9 @@ import torch.profiler
 
 torch.set_float32_matmul_precision('high')
 
-
 def setup_data(base_path, args, toy=False):
-    plant_dir = "toy_plant_wds" if toy else "plant_img"
-    bee_dir = "toy_bee_wds" if toy else "bombus_img"
+    plant_dir = "toy_plant_img" if toy else "plant_img"
+    bee_dir = "toy_bee_img" if toy else "bombus_img"
 
     PLANT_BASE_DIR = os.path.join(base_path, plant_dir)
     BEE_BASE_DIR = os.path.join(base_path, bee_dir)
@@ -54,7 +53,7 @@ def setup_trainer_args():
 def main(args):
     base_path = os.path.join("/scratch", "mcatchen", "iNatImages", "data") if args.cluster else "./data"
 
-    datamodule = setup_data(base_path, args)
+    datamodule = setup_data(base_path, args, toy=args.toy)
 
     model = InteractionPredictor(
         lr=args.lr, 
@@ -77,10 +76,10 @@ def main(args):
         logger = logger,
         enable_checkpointing=False,   # Turn off default ckpt
         callbacks=[checkpoint_cb],
-        max_steps = 50,
+        #max_steps = 50,
         profiler="simple",
         #max_epochs = args.max_epochs,
-        enable_progress_bar=False 
+        #enable_progress_bar=False 
     )
     trainer.fit(model, datamodule)
 

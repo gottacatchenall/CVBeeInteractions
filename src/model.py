@@ -65,8 +65,8 @@ class InteractionPredictor(pl.LightningModule):
         for p in self.backbone.parameters():
             p.requires_grad = False
         # Unfreeze last transformer block
-        for param in self.backbone.layer[-1*num_vit_unfrozen_layers:].parameters():
-            param.requires_grad = True
+        #for param in self.backbone.layer[-1*num_vit_unfrozen_layers:].parameters():
+        #    param.requires_grad = True
 
         backbone_dims = {"base": 768, "large": 1024, "huge": 1280}
         self.backbone_dim = backbone_dims[model_type]

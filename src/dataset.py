@@ -90,22 +90,29 @@ class PairInteractionDataset(Dataset):
         check_fcn = mask.is_train_pair if split == "train" else mask.is_val_pair    
         self.pairs_data = [(p,b,k) for p,b,k in pairs_data if check_fcn(p,b)]
 
-        # Example: {bee_id: [path_to_img_1, path_to_img_2, ...]}
         self.plant_file_maps = self._map_image_files(plant_dir)
         self.bee_file_maps = self._map_image_files(bee_dir)
 
 
     def _map_image_files(self, base_dir):
         """Helper to map IDs to lists of image paths."""
-        file_map = {}
+        image_map = {}
         for item_id in os.listdir(base_dir): 
             item_path = os.path.join(base_dir, item_id)
+            print(f"loading {item_id}")
             if os.path.isdir(item_path):
-                # Assumes images for an ID are in a subfolder named by the ID
-                images = [os.path.join(item_path, f) for f in os.listdir(item_path) if f.endswith(('.jpg', '.png'))]
-                file_map[item_id] = images
-        return file_map
+                paths = [os.path.join(item_path, f) for f in os.listdir(item_path) if f.endswith(('.jpg', '.png'))]
+                images = self.load_images(paths)
+                image_map[item_id] = images
+        return image_map
         
+    def load_images(self, paths):
+        imgs = []
+        for path in paths:
+            img = decode_image(path)
+            img = self.transform(img)
+            imgs.append(img)
+        return torch.stack(imgs) 
 
     def __len__(self):
         return len(self.pairs_data)
@@ -113,32 +120,19 @@ class PairInteractionDataset(Dataset):
     def __getitem__(self, idx):
         plant_name, bee_name, label = self.pairs_data[idx]
         
-        # Get all image paths for the current plant/bee
-        plant_paths = self.plant_file_maps[plant_name]
-        bee_paths = self.bee_file_maps[bee_name]
+        # Get all image tensors plant/bee
+        plant_tensors = self.plant_file_maps[plant_name]
+        bee_tensors = self.bee_file_maps[bee_name]
         
         # Sample N_IMGS paths with replacement (safer if fewer than N_IMGS exist)
-        plant_samples = random.choices(plant_paths, k=self.n_imgs)
-        bee_samples = random.choices(bee_paths, k=self.n_imgs)
+        #plant_samples = random.choices(plant_paths, k=self.n_imgs)
+        #bee_samples = random.choices(bee_paths, k=self.n_imgs)
         
-        # 2. Load and Transform the sampled images
-    
-        def load_images(paths):
-            imgs = []
-            for path in paths:
-                img = decode_image(path)
-                #img = Image.open(path).convert('RGB')
-                if self.transform:
-                    img = self.transform(img)
-                imgs.append(img)
-            # Stack the N_IMGS images into a single tensor of shape [n_imgs, C, H, W]
-            #return imgs
-            return torch.stack(imgs) 
+        plant_idx = torch.randperm(plant_tensors.shape[0])[:self.n_imgs]
+        bee_idx = torch.randperm(bee_tensors.shape[0])[:self.n_imgs]
 
-        plant_tensors = load_images(plant_samples)
-        bee_tensors = load_images(bee_samples)
-        
-        # NOTE: The tensors are still on the CPU at this point.
+        plant_tensors, bee_tensors = plant_tensors[plant_idx,:,:,:].squeeze(), bee_tensors[bee_idx,:,:,:].squeeze()
+
         return plant_name, bee_name, plant_tensors, bee_tensors, torch.tensor(label, dtype=torch.long)
 
 class PlantPollinatorDataModule(pl.LightningDataModule):
