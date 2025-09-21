@@ -68,7 +68,7 @@ def read_folder(dir):
             try: 
                 imgs[sp_name].append(decode_image(os.path.join(sp_dir, p)))
             except:
-                print("Failed to read file {os.path.join(sp_dir, p)}")
+                print(f"Failed to read file {os.path.join(sp_dir, p)}")
     return imgs
 
 def main(args):
