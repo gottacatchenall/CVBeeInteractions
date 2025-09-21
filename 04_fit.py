@@ -69,8 +69,6 @@ def main(args):
     checkpoint_cb = AsyncTrainableCheckpoint(
         dirpath = os.path.join(logger.log_dir, "checkpoints")
     )
-    num_nodes = os.environ.get("SLURM_JOB_NUM_NODES") 
-    num_nodes = 1 if num_nodes == None else num_nodes
 
     trainer = pl.Trainer(
         accelerator = accelerator,
@@ -79,7 +77,6 @@ def main(args):
         logger = logger,
         enable_checkpointing=False,   # Turn off default ckpt
         callbacks=[checkpoint_cb],
-        num_nodes = num_nodes,
         max_steps = 50,
         profiler="simple",
         #max_epochs = args.max_epochs,
