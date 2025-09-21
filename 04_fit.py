@@ -10,6 +10,8 @@ from src.checkpoints import AsyncTrainableCheckpoint
 
 from lightning.pytorch.loggers import CSVLogger
 
+import torch.profiler
+
 torch.set_float32_matmul_precision('high')
 
 
@@ -78,10 +80,15 @@ def main(args):
         enable_checkpointing=False,   # Turn off default ckpt
         callbacks=[checkpoint_cb],
         num_nodes = num_nodes,
-        max_epochs = args.max_epochs,
+        max_steps = 50,
+        profiler="simple",
+        #max_epochs = args.max_epochs,
         enable_progress_bar=False 
     )
     trainer.fit(model, datamodule)
+
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -100,5 +107,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
+
 
 
