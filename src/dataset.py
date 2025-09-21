@@ -6,7 +6,6 @@ import torchvision.transforms.v2 as v2
 import random
 from torchvision.datasets import ImageFolder
 from itertools import cycle, islice
-
 import pytorch_lightning as pl
 
 
@@ -127,11 +126,13 @@ class PairInteractionDataset(Dataset):
         def load_images(paths):
             imgs = []
             for path in paths:
-                img = Image.open(path).convert('RGB')
+                img = decode_image(path)
+                #img = Image.open(path).convert('RGB')
                 if self.transform:
                     img = self.transform(img)
                 imgs.append(img)
             # Stack the N_IMGS images into a single tensor of shape [n_imgs, C, H, W]
+            #return imgs
             return torch.stack(imgs) 
 
         plant_tensors = load_images(plant_samples)
@@ -154,8 +155,8 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
         self.bee_dir = bee_dir
     
         self.image_transform = v2.Compose([
+            v2.ConvertImageDtype(torch.float32),
             v2.Resize((224, 224)),
-            v2.ToTensor(),
             v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 

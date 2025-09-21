@@ -7,6 +7,8 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 import torch.nn.functional as F
+import kornia.augmentation as K
+
 
 from torch.utils.data import DataLoader
 from transformers import AutoModel
@@ -137,7 +139,7 @@ class InteractionPredictor(pl.LightningModule):
         # Final prediction
         logits = self.head(e2).flatten()
         return logits
-
+    
     def shared_step(self, batch, batch_idx):
         # batch is a list/tuple of N items from PairedBagDataset, but when using DataLoader with batch_size=N,
         # a collated batch will have each field stacked automatically.
