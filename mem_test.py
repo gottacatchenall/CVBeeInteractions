@@ -63,7 +63,12 @@ def read_folder(dir):
     imgs = {}
     for sp_name in sp_names:
         sp_dir = os.path.join(dir, sp_name)
-        imgs[sp_name] = [decode_image(os.path.join(sp_dir, p)) for p in os.listdir(sp_dir)]
+        imgs[sp_name] = []
+        for p in os.listdir(sp_dir):
+            try: 
+                imgs[sp_name].append(decode_image(os.path.join(sp_dir, p)))
+            except:
+                print("Failed to read file {os.path.join(sp_dir, p)}")
     return imgs
 
 def main(args):
