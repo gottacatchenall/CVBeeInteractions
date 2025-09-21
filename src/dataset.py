@@ -9,6 +9,8 @@ from itertools import cycle, islice
 
 import pytorch_lightning as pl
 
+
+import kornia.augmentation as K
 from torchvision.io import decode_image
 
 import pandas as pd
@@ -22,26 +24,6 @@ def load_json(path):
     with open(path, 'r') as f:
         dict = json.load(f)
     return dict
-
-
-class SamplerDecoder():
-    def __init__(self, transform=None):
-        if transform == None:
-            self.transform = v2.Compose([
-            v2.ToTensor(),
-            v2.Resize((224, 224)),
-#            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225))
-        ])
-        else:
-            self.transform = transform
-        
-    def __call__(self, sample):
-        meta, img_bytes = sample
-        img = Image.open(io.BytesIO(img_bytes))
-        img = self.transform(img)
-        label = torch.tensor(meta["label"], dtype=torch.long)
-        return img, label
 
 
 class ZeroShotMaskMaker:
@@ -132,7 +114,7 @@ class PairInteractionDataset(Dataset):
     def __getitem__(self, idx):
         plant_name, bee_name, label = self.pairs_data[idx]
         
-        # Get all image paths for the current widget/sprocket
+        # Get all image paths for the current plant/bee
         plant_paths = self.plant_file_maps[plant_name]
         bee_paths = self.bee_file_maps[bee_name]
         
@@ -170,7 +152,7 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
 
         self.plant_dir = plant_dir
         self.bee_dir = bee_dir
-
+    
         self.image_transform = v2.Compose([
             v2.Resize((224, 224)),
             v2.ToTensor(),
@@ -235,7 +217,6 @@ class PlantPollinatorDataModule(pl.LightningDataModule):
             batch_size = self.batch_size,
             num_workers = self.num_workers,
             pin_memory=True,
-            shuffle=True,
             prefetch_factor = self.prefetch_factor,
             persistent_workers = self.persistent_workers
         )

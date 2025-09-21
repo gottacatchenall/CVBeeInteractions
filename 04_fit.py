@@ -4,10 +4,13 @@ import torch
 
 import pytorch_lightning as pl
 
-from torch.utils.data import DataLoader
 from src.dataset import PlantPollinatorDataModule
 from src.model import InteractionPredictor
+from src.checkpoints import AsyncTrainableCheckpoint 
+
 from lightning.pytorch.loggers import CSVLogger
+
+torch.set_float32_matmul_precision('high')
 
 
 def setup_data(base_path, args, toy=False):
@@ -61,11 +64,20 @@ def main(args):
     log_path = os.path.join(base_path, "logs")
     logger = CSVLogger(log_path, name=os.environ.get("SLURM_JOB_NAME") or "InteractionTest")
 
+    checkpoint_cb = AsyncTrainableCheckpoint(
+        dirpath = os.path.join(logger.log_dir, "checkpoints")
+    )
+    num_nodes = os.environ.get("SLURM_JOB_NUM_NODES") 
+    num_nodes = 1 if num_nodes == None else num_nodes
+
     trainer = pl.Trainer(
         accelerator = accelerator,
         devices = devices,
         strategy = strategy,
         logger = logger,
+        enable_checkpointing=False,   # Turn off default ckpt
+        callbacks=[checkpoint_cb],
+        num_nodes = num_nodes,
         max_epochs = args.max_epochs,
         enable_progress_bar=False 
     )
