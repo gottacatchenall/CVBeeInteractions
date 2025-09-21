@@ -52,7 +52,7 @@ class ZeroShotMaskMaker:
         holdout_plants=0, 
         holdout_bees=0, 
         seed=0, 
-        strict=True
+        strict=False
     ):
         """
         Hold out a fixed number of species of each type.

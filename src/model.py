@@ -21,12 +21,34 @@ from torchmetrics.classification import (
 from torchmetrics.functional.classification import binary_auroc, binary_average_precision, binary_accuracy
 
 
+class AttentionPooling(nn.Module):
+    def __init__(self, input_dim, hidden_dim=128):
+        super().__init__()
+        self.attn = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, x):
+        """
+        x: [B, N, D]  (batch, num_instances, feature_dim)
+        returns: [B, D]
+        """
+        attn_scores = self.attn(x)                          # [B, N, 1]
+        attn_weights = torch.softmax(attn_scores, dim=1)    # [B, N, 1]
+        pooled = torch.sum(attn_weights * x, dim=1)         # [B, D]
+        return pooled
+
+
 class InteractionPredictor(pl.LightningModule):
     def __init__(
         self, 
         lr=3e-4,
         model_type="base",
-        embed_dim = 128
+        embed_dim = 128,
+        attention_hidden_dim = 128,
+        num_vit_unfrozen_layers = 1
     ):
         super().__init__()
 
@@ -37,24 +59,36 @@ class InteractionPredictor(pl.LightningModule):
             "huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m",
         }
         self.backbone = AutoModel.from_pretrained(model_paths[model_type], local_files_only=True)
+
         for p in self.backbone.parameters():
             p.requires_grad = False
+        # Unfreeze last transformer block
+        for param in self.backbone.layer[-1*num_vit_unfrozen_layers:].parameters():
+            param.requires_grad = True
 
         backbone_dims = {"base": 768, "large": 1024, "huge": 1280}
         self.backbone_dim = backbone_dims[model_type]
         self.embed_dim = embed_dim
 
+        # ---- Attention pooling ----
+        self.attn_pool_b = AttentionPooling(self.backbone_dim, attention_hidden_dim)
+        self.attn_pool_p = AttentionPooling(self.backbone_dim, attention_hidden_dim)
 
          # ---- Embedding head ----
         self.embedding_model = nn.Sequential(
-            nn.Linear(2*self.backbone_dim, 256),
+            nn.Linear(2*self.backbone_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, embed_dim),
         )
+
         # ---- Final classifier ----
         self.head = nn.Sequential(
-            nn.LayerNorm(self.embed_dim),
-            nn.Linear(self.embed_dim, 1)
+            nn.ReLU(),
+            nn.Linear(self.embed_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
         )
 
         self.lr = lr
@@ -75,7 +109,6 @@ class InteractionPredictor(pl.LightningModule):
         B, N, C, H, W = plant_bag.shape
 
         # Merge bags into one batch for the backbone
-
         b = plant_bag.view(B * N, C, H, W)
         p = bee_bag.view(B * N, C, H, W)
 
@@ -88,8 +121,12 @@ class InteractionPredictor(pl.LightningModule):
         p_e = p_e.view(B, N, self.backbone_dim)
 
         # Mean pooling 
-        pooled_b_e = torch.mean(b_e, dim=1)
-        pooled_p_e = torch.mean(p_e, dim=1)
+        #pooled_b_e = torch.mean(b_e, dim=1)
+        #pooled_p_e = torch.mean(p_e, dim=1)
+
+        # Attention pooling
+        pooled_b_e = self.attn_pool_b(b_e)   # [B, D]
+        pooled_p_e = self.attn_pool_p(p_e)   # [B, D]
 
         # Concat bee and plant features
         e = torch.concat([pooled_b_e, pooled_p_e], dim=1)
@@ -176,8 +213,8 @@ class InteractionPredictor(pl.LightningModule):
             yhat = torch.tensor(bee_preds[k])
             y = torch.tensor(bee_labels[k]).int()
             acc = binary_accuracy(yhat, y)
-            auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.nan
-            ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.nan
+            auc = binary_auroc(yhat, y) if len(y.unique()) > 1 else torch.tensor(torch.nan)
+            ap = binary_average_precision(yhat, y) if len(y.unique()) > 1 else torch.tensor(torch.nan)
             bee_df.append({"bee_id": k, "acc": acc.item(), "auc": auc.item(),
                            "ap": ap.item(), "n": len(y)})
 
